@@ -1,0 +1,72 @@
+// _variables.scss
+
+// Typography
+$font-family-base: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+$font-family-mono: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+$font-size-base: 14px;
+
+// Figma Variables (rmbm Collection)
+$figma-gray-900: #030303;
+$figma-gray-800: #131313;
+$figma-gray-600: #4b4b4b;
+$figma-gray-300: #afafaf;
+$figma-gray-0: #ffffff;
+
+$figma-orange-500: #ff7818;
+$figma-orange-100: #fff6f0;
+
+$figma-white-alpha-500: rgba(255, 255, 255, 0.42);
+$figma-white-alpha-300: rgba(255, 255, 255, 0.17);
+$figma-white-alpha-0: rgba(255, 255, 255, 0);
+$figma-black-alpha-200: rgba(0, 0, 0, 0.17);
+
+// Theme Color Alias (Change this color to synchronously update the entire application theme!)
+$theme-primary: $figma-orange-500;
+$theme-primary-light: $figma-orange-100;
+
+// Theme Mapping
+$color-bg: transparent;
+$color-text: $figma-gray-800;
+$color-text-muted: $figma-gray-600;
+
+$color-accent: $theme-primary;
+$color-accent-hover: darken($theme-primary, 5%);
+$color-danger: #F3343A;
+
+// Glassmorphism Tokens (Figma Node 628:2447 specs)
+$glass-bg-base: $figma-white-alpha-500;
+$glass-border: rgba(255, 255, 255, 0.45);
+$glass-shadow: 0 8px 32px 0 $figma-black-alpha-200;
+
+// Mixins
+@mixin glass-panel {
+  // Layered linear gradients for the ultimate premium glass texture sheen
+  background: linear-gradient(rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 100%), $glass-bg-base;
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid $glass-border;
+  box-shadow: $glass-shadow;
+  border-radius: 12px; // Matches Figma design exactly
+}
+
+
+@mixin glass-icon-button {
+  background: transparent;
+  border: none;
+  color: #ffffff; // Icons in the image seem to be white
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  border-radius: 4px;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+  
+  &:active {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
