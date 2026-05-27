@@ -1,4 +1,5 @@
 @use 'variables' as *;
+@use 'tiptap';
 
 /* Local Offline Fonts: IBM Plex Sans (Variable Font) */
 @font-face {
@@ -154,5 +155,17 @@ a {
 
 code, pre, .mono {
   font-family: $font-family-mono !important;
+}
+
+// Elegant & Premium Global Focus Outline
+button, a, input, textarea {
+  &:focus {
+    outline: none;
+  }
+  
+  &:focus-visible {
+    outline: 2px solid rgba($color-accent, 0.35);
+    outline-offset: 1px;
+  }
 }
 

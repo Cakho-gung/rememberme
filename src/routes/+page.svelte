@@ -1,18 +1,34 @@
 <script lang="ts">
   import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
   import { fade } from 'svelte/transition';
+  import Editor from '$lib/components/Editor.svelte';
+  
+  import 'highlight.js/styles/tokyo-night-dark.css';
+  import 'katex/dist/katex.min.css';
+
+  // -- Menu & Editing State --
+  let isMenuOpen = $state(false);
+  let isEditingTitle = $state(false);
+  let titleEditValue = $state('');
 
   let isPinned = $state(true);
 
   async function closeApp() {
     const appWindow = getCurrentWindow();
     await appWindow.hide();
+    isMenuOpen = false;
   }
 
   async function togglePin() {
     isPinned = !isPinned;
     const appWindow = getCurrentWindow();
     await appWindow.setAlwaysOnTop(isPinned);
+    isMenuOpen = false;
+  }
+
+  function handleSettings() {
+    console.log('Settings clicked');
+    isMenuOpen = false;
   }
 
   async function startDragging(e: MouseEvent) {
@@ -21,11 +37,6 @@
     const appWindow = getCurrentWindow();
     await appWindow.startDragging();
   }
-
-  // -- Menu & Editing State --
-  let isMenuOpen = $state(false);
-  let isEditingTitle = $state(false);
-  let titleEditValue = $state('');
 
   function toggleMenu() {
     isMenuOpen = !isMenuOpen;
@@ -106,6 +117,33 @@
   let currentPointerY = $state(0);
   let hoveredToolAction = $state<string | null>(null);
 
+  function cleanupDotDragging(target: HTMLElement, pointerId: number) {
+    target.removeEventListener('pointermove', onDotPointerMove);
+    target.removeEventListener('pointerup', onDotPointerUp);
+    target.removeEventListener('pointercancel', onDotPointerCancel);
+    target.removeEventListener('lostpointercapture', onDotPointerCancel);
+    try {
+      target.releasePointerCapture(pointerId);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function onDotPointerCancel(e: PointerEvent) {
+    const target = e.currentTarget as HTMLElement;
+    cleanupDotDragging(target, e.pointerId);
+    
+    isDotDragging = false;
+    hoveredToolAction = null;
+    isMenuOpen = false;
+  }
+
+  function handleWindowBlur() {
+    isDotDragging = false;
+    hoveredToolAction = null;
+    isMenuOpen = false;
+  }
+
   function onDotPointerDown(e: PointerEvent) {
     if (e.button !== 0) return;
     const target = e.currentTarget as HTMLElement;
@@ -121,6 +159,8 @@
     
     target.addEventListener('pointermove', onDotPointerMove);
     target.addEventListener('pointerup', onDotPointerUp);
+    target.addEventListener('pointercancel', onDotPointerCancel);
+    target.addEventListener('lostpointercapture', onDotPointerCancel);
   }
 
   function onDotPointerMove(e: PointerEvent) {
@@ -149,9 +189,7 @@
 
   function onDotPointerUp(e: PointerEvent) {
     const target = e.currentTarget as HTMLElement;
-    target.removeEventListener('pointermove', onDotPointerMove);
-    target.removeEventListener('pointerup', onDotPointerUp);
-    target.releasePointerCapture(e.pointerId);
+    cleanupDotDragging(target, e.pointerId);
     
     if (isDotDragging) {
       isDotDragging = false;
@@ -163,11 +201,10 @@
         else if (action === 'edit') editTitle();
         else if (action === 'archive') archiveNote();
         else if (action === 'pin') togglePin();
-        else if (action === 'settings') console.log('Settings clicked');
+        else if (action === 'settings') handleSettings();
         else if (action === 'exit') closeApp();
-      } else {
-        isMenuOpen = false;
       }
+      isMenuOpen = false;
     }
   }
 
@@ -181,80 +218,46 @@
 
   let previousSize = { width: 800, height: 600 };
 
-  interface NoteContent {
-    heading1: string;
-    body: string;
-    heading2: string;
-    list: string[];
-  }
-
   interface Note {
     id: number;
     title: string;
     archived: boolean;
-    content: NoteContent;
+    content: string;
   }
 
   let mockNotes = $state<Note[]>([
     {
+      id: 5,
+      title: 'Tiptap styling',
+      archived: false,
+      content: `<h1>Heading Level 1</h1><p>This is a standard paragraph with <strong>bold text</strong>, <em>italic text</em>, <a href="https://example.com">hyperlink</a>, and <code>inline code</code> to test inline styles. We can also tag things like <span data-type="mention" class="mention-tag" data-id="idea">@idea</span> or <span data-type="mention" class="mention-tag" data-id="todo">@todo</span>.</p><h2>Heading Level 2</h2><p>A quick demonstration of lists:</p><ul><li><p>First item in a bullet list</p></li><li><p>Second item with some <strong>bold</strong> text</p></li><li><p>Third item</p></li></ul><ol><li><p>First item in an ordered list</p></li><li><p>Second item</p></li></ol><h2>Task List (To-do)</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>Unfinished task</p></div></li><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Completed task (strikethrough)</p></div></li></ul><h2>Code & Quote</h2><blockquote><p>This is a blockquote. It should have a border on the left and be italicized. It is useful for highlighting quotes or important notes.</p></blockquote><pre><code>function tiptapDemo() {
+  console.log("This is a code block");
+  return "Enjoy styling!";
+}</code></pre>`
+    },
+    {
       id: 1,
       title: 'This is the note tittle',
       archived: false,
-      content: {
-        heading1: 'This is note content',
-        body: 'Aliqua irure sit amet culpa aute velit aliqua id sit pariatur nisi elit nulla. Amet aliquip consectetur sunt ut eiusmod sint anim laboris dolor aliquip. Fugiat Lorem officia occaecat velit quis consectetur enim nisi sint ea occaecat deserunt magna sit fugiat.',
-        heading2: 'The quick brown fox',
-        list: [
-          'Aliqua irure sit amet culpa aute',
-          'Aliqua irure sit amet culpa aute',
-          'Aliqua irure sit amet culpa aute'
-        ]
-      }
+      content: `<h1>This is note content</h1><p>Aliqua irure sit amet culpa aute velit aliqua id sit pariatur nisi elit nulla. Amet aliquip consectetur sunt ut eiusmod sint anim laboris dolor aliquip. Fugiat Lorem officia occaecat velit quis consectetur enim nisi sint ea occaecat deserunt magna sit fugiat.</p><h2>The quick brown fox</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>Aliqua irure sit amet culpa aute</p></div></li><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Aliqua irure sit amet culpa aute</p></div></li></ul>`
     },
     {
       id: 2,
       title: 'Lorem ipsum dolor sit amet',
       archived: false,
-      content: {
-        heading1: 'Lorem Ipsum',
-        body: 'Consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.',
-        heading2: 'Dolor sit amet',
-        list: [
-          'Duis aute irure dolor in reprehenderit',
-          'Voluptate velit esse cillum dolore',
-          'Fugiat nulla pariatur excepteur'
-        ]
-      }
+      content: `<h1>Lorem Ipsum</h1><p>Consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><h2>Dolor sit amet</h2><ul><li><p>Duis aute irure dolor in reprehenderit</p></li><li><p>Voluptate velit esse cillum dolore</p></li><li><p>Fugiat nulla pariatur excepteur</p></li></ul>`
     },
     {
       id: 3,
       title: 'Another awesome idea',
       archived: false,
-      content: {
-        heading1: 'Excepteur sint occaecat',
-        body: 'Sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.',
-        heading2: 'Cupidatat non proident',
-        list: [
-          'Nemo enim ipsam voluptatem quia',
-          'Voluptas sit aspernatur aut odit',
-          'Aut fugit sed quia consequuntur'
-        ]
-      }
+      content: `<h1>Excepteur sint occaecat</h1><p>Sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p><h2>Cupidatat non proident</h2><ul><li><p>Nemo enim ipsam voluptatem quia</p></li><li><p>Voluptas sit aspernatur aut odit</p></li><li><p>Aut fugit sed quia consequuntur</p></li></ul>`
     },
     {
       id: 4,
       title: 'Meeting notes with team',
       archived: false,
-      content: {
-        heading1: 'Omnis iste natus error',
-        body: 'Sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.',
-        heading2: 'Nemo enim ipsam',
-        list: [
-          'Neque porro quisquam est qui',
-          'Dolorem ipsum quia dolor sit',
-          'Amet consectetur adipisci velit'
-        ]
-      }
+      content: `<h1>Omnis iste natus error</h1><p>Sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p><h2>Nemo enim ipsam</h2><ul><li><p>Neque porro quisquam est qui</p></li><li><p>Dolorem ipsum quia dolor sit</p></li><li><p>Amet consectetur adipisci velit</p></li></ul>`
     }
   ]);
 
@@ -311,24 +314,32 @@
     isCollapsed = !isCollapsed;
     
     if (isCollapsed) {
-      const size = await appWindow.innerSize();
+      const size = await appWindow.outerSize();
       const scale = await appWindow.scaleFactor();
-      previousSize = { width: size.width / scale, height: size.height / scale };
+      const h = size.height / scale;
+      if (h > 60) {
+        previousSize = { width: size.width / scale, height: h };
+      }
       
       isDropdownOpen = false; // close dropdown when collapsing
       
-      // Update min size to allow shrinking
-      await appWindow.setMinSize(new LogicalSize(340, 48));
-      await appWindow.setSize(new LogicalSize(previousSize.width, 48));
-      // Lock max height to 48px so Windows cannot bounce it back
-      await appWindow.setMaxSize(new LogicalSize(9999, 48));
+      // Update min size to allow shrinking (48 + 9 = 57 for height)
+      await appWindow.setMinSize(new LogicalSize(356, 57));
+      await appWindow.setSize(new LogicalSize(previousSize.width, 57));
+      // Lock max height to 57px so Windows cannot bounce it back
+      await appWindow.setMaxSize(new LogicalSize(9999, 57));
     } else {
-      // Remove max height constraint
-      await appWindow.setMaxSize(null);
-      // Restore previous size
-      await appWindow.setSize(new LogicalSize(previousSize.width, previousSize.height));
+      // Remove max height constraint by setting it to a very large value instead of null
+      await appWindow.setMaxSize(new LogicalSize(9999, 9999));
+      // Get the current width of the window (in case they resized it while collapsed)
+      const size = await appWindow.outerSize();
+      const scale = await appWindow.scaleFactor();
+      const currentWidth = size.width / scale;
+      // Restore previous size (ensure it is at least 249px tall, 240 + 9)
+      const targetHeight = Math.max(249, previousSize.height);
+      await appWindow.setSize(new LogicalSize(currentWidth, targetHeight));
       // Restore normal min size
-      await appWindow.setMinSize(new LogicalSize(340, 240));
+      await appWindow.setMinSize(new LogicalSize(356, 249));
     }
   }
 
@@ -336,62 +347,12 @@
     if (isCollapsed) return; // Don't open dropdown if collapsed
     isDropdownOpen = !isDropdownOpen;
   }
-
-  // -- Programmatic Resize Logic --
-  let isResizing = $state(false);
-  let startWidth = 0;
-  let startHeight = 0;
-  let startX = 0;
-  let startY = 0;
-  let resizeDirection: 'r' | 'b' | 'br' = 'br';
-
-  const appWindow = getCurrentWindow();
-
-  async function startResize(e: PointerEvent, dir: 'r' | 'b' | 'br') {
-    isResizing = true;
-    resizeDirection = dir;
-    
-    const size = await appWindow.innerSize();
-    const scale = await appWindow.scaleFactor();
-    startWidth = size.width / scale;
-    startHeight = size.height / scale;
-    
-    startX = e.screenX;
-    startY = e.screenY;
-    
-    const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
-  }
-
-  async function handleResize(e: PointerEvent) {
-    if (!isResizing) return;
-    
-    const deltaX = e.screenX - startX;
-    const deltaY = e.screenY - startY;
-    
-    let newWidth = startWidth;
-    let newHeight = startHeight;
-    
-    if (resizeDirection === 'r' || resizeDirection === 'br') {
-      newWidth = Math.max(340, startWidth + deltaX);
-    }
-    if (resizeDirection === 'b' || resizeDirection === 'br') {
-      newHeight = Math.max(240, startHeight + deltaY);
-    }
-    
-    await appWindow.setSize(new LogicalSize(newWidth, newHeight));
-  }
-
-  function stopResize(e: PointerEvent) {
-    if (!isResizing) return;
-    isResizing = false;
-    const el = e.currentTarget as HTMLElement;
-    el.releasePointerCapture(e.pointerId);
-  }
 </script>
 
+<svelte:window onblur={handleWindowBlur} />
+
 <main class="app-container">
-  <div class="glass-widget">
+  <div class="glass-widget" class:collapsed={isCollapsed}>
 
     <!-- Main inner column: Title + Editor + Timer -->
     <div class="inner-column">
@@ -460,16 +421,17 @@
       {#if !isCollapsed}
         <!-- Text editor area -->
         <div class="text-editor">
-          <div class="editor-content">
-            <p class="heading-text">{activeNote.content.heading1}</p>
-            <p class="body-text">{activeNote.content.body}</p>
-            <p class="heading-text">{activeNote.content.heading2}</p>
-            <div class="list-block">
-              {#each activeNote.content.list as listItem}
-                <ul><li>{listItem}</li></ul>
-              {/each}
-            </div>
-          </div>
+          {#if activeNote}
+            <Editor 
+              noteId={activeNote.id}
+              content={activeNote.content}
+              onUpdate={(content) => {
+                if (activeNote) {
+                  activeNote.content = content;
+                }
+              }} 
+            />
+          {/if}
         </div>
 
         <!-- Timer row: aligned to right -->
@@ -477,7 +439,7 @@
           <button class="timer-btn" aria-label="Timer">
             <!-- lucide/timer icon -->
             <svg class="tool-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12.8335 8.5332C12.8335 5.86383 10.6689 3.69922 7.99951 3.69922C5.33029 3.69939 3.1665 5.86393 3.1665 8.5332C3.16661 11.2024 5.33035 13.366 7.99951 13.3662C10.6688 13.3662 12.8334 11.2025 12.8335 8.5332ZM9.646 6.17969C9.84124 5.98445 10.1578 5.98449 10.353 6.17969C10.5483 6.37495 10.5483 6.69146 10.353 6.88672L8.35303 8.88672C8.15774 9.08172 7.84117 9.08189 7.646 8.88672C7.45089 8.69154 7.45102 8.37495 7.646 8.17969L9.646 6.17969ZM9.3335 0.833008C9.60949 0.833184 9.8335 1.05697 9.8335 1.33301C9.8335 1.60904 9.60949 1.83283 9.3335 1.83301H6.6665C6.39036 1.83301 6.1665 1.60915 6.1665 1.33301C6.1665 1.05687 6.39036 0.833008 6.6665 0.833008H9.3335ZM13.8335 8.5332C13.8334 11.7548 11.2211 14.3662 7.99951 14.3662C4.77807 14.366 2.16661 11.7547 2.1665 8.5332C2.1665 5.31165 4.778 2.69939 7.99951 2.69922C11.2212 2.69922 13.8335 5.31154 13.8335 8.5332Z" fill="currentColor"/>
+              <path d="M12.8335 8.5332C12.8335 5.86383 10.6689 3.69922 7.99951 3.69922C5.33029 3.69939 3.1665 5.86393 3.1665 8.5332C3.16661 11.2024 5.33035 13.366 7.99951 13.3662C10.6688 13.3662 12.8334 11.2025 12.8335 8.5332ZM9.646 6.17969C9.84124 5.98445 10.1578 5.98449 10.353 6.17969C10.5483 6.37495 10.5483 6.69146 10.353 6.88672L8.35303 8.88672C8.15774 9.08172 7.84117 9.08189 7.646 8.88672C7.45089 8.69154 7.45102 8.37495 7.646 8.17969L9.646 6.17969ZM9.3335 0.833008C9.60949 0.833184 9.8335 1.05697 9.8335 1.33301C9.8335 1.60904 9.60949 1.83283 9.3335 1.83301H6.6665C6.39036 1.83301 6.1665 1.60915 6.1665 1.33301C6.1665 1.05687 6.39036 0.833008 6.6665 0.833008H9.3335ZM13.8335 8.5332C13.8334 11.7548 11.2211 14.3662 7.99951 14.3662C4.77807 14.366 2.16661 11.7547 7.99951 8.5332C2.1665 5.31165 4.778 2.69939 7.99951 2.69922C11.2212 2.69922 13.8335 5.31154 13.8335 8.5332Z" fill="currentColor"/>
             </svg>
           </button>
         </div>
@@ -518,7 +480,7 @@
               </svg>
             {/if}
           </button>
-          <button class="tool-btn delay-1" class:drag-hover={hoveredToolAction === 'settings'} data-action="settings" onclick={() => console.log('Settings clicked')} aria-label="Settings">
+          <button class="tool-btn delay-1" class:drag-hover={hoveredToolAction === 'settings'} data-action="settings" onclick={handleSettings} aria-label="Settings">
             <svg class="tool-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M2.83301 14V9.83301H2C1.72386 9.83301 1.5 9.60915 1.5 9.33301C1.50018 9.05702 1.72397 8.83301 2 8.83301H4.66699C4.94288 8.83318 5.16682 9.05712 5.16699 9.33301C5.16699 9.60904 4.94298 9.83283 4.66699 9.83301H3.83301V14C3.83301 14.2761 3.60915 14.5 3.33301 14.5C3.05702 14.4998 2.83301 14.276 2.83301 14ZM7.5 14V8C7.5 7.72386 7.72386 7.5 8 7.5C8.27614 7.5 8.5 7.72386 8.5 8V14C8.5 14.2761 8.27614 14.5 8 14.5C7.72386 14.5 7.5 14.2761 7.5 14ZM12.167 14V11.167H11.333C11.0571 11.1668 10.8332 10.9429 10.833 10.667C10.833 10.391 11.057 10.1672 11.333 10.167H14C14.2761 10.167 14.5 10.3908 14.5 10.667C14.4998 10.943 14.276 11.167 14 11.167H13.167V14C13.167 14.276 12.943 14.4998 12.667 14.5C12.3908 14.5 12.167 14.2761 12.167 14ZM12.167 8V2C12.167 1.72386 12.3908 1.5 12.667 1.5C12.943 1.50018 13.167 1.72397 13.167 2V8C13.167 8.27603 12.943 8.49982 12.667 8.5C12.3908 8.5 12.167 8.27614 12.167 8ZM2.83301 6.66699V2C2.83301 1.72397 3.05702 1.50018 3.33301 1.5C3.60915 1.5 3.83301 1.72386 3.83301 2V6.66699C3.83283 6.94298 3.60904 7.16699 3.33301 7.16699C3.05712 7.16682 2.83318 6.94288 2.83301 6.66699ZM7.5 2C7.5 1.72386 7.72386 1.5 8 1.5C8.27614 1.5 8.5 1.72386 8.5 2V4.83301H9.33301C9.60904 4.83301 9.83283 5.05702 9.83301 5.33301C9.83301 5.60915 9.60915 5.83301 9.33301 5.83301H6.66699C6.39085 5.83301 6.16699 5.60915 6.16699 5.33301C6.16717 5.05702 6.39096 4.83301 6.66699 4.83301H7.5V2Z" fill="currentColor"/>
             </svg>
@@ -533,37 +495,12 @@
     {/if}
 
     {#if isDotDragging}
-      <svg style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999;">
-        <line x1={dotStartX} y1={dotStartY} x2={currentPointerX} y2={currentPointerY} stroke="#afafaf" stroke-width="1.5" />
-        <circle cx={currentPointerX} cy={currentPointerY} r="5" fill="#ff7818" />
+      <svg class="drag-overlay">
+        <line x1={dotStartX} y1={dotStartY} x2={currentPointerX} y2={currentPointerY} class="drag-line" />
+        <circle cx={currentPointerX} cy={currentPointerY} r="5" class="drag-pointer" />
       </svg>
     {/if}
   </div>
-
-  {#if !isCollapsed}
-    <!-- Smooth & Wide Resize Handles (Invisible, but highly grabbable!) -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div 
-      class="resize-handle right" 
-      onpointerdown={(e) => startResize(e, 'r')}
-      onpointermove={handleResize}
-      onpointerup={stopResize}
-    ></div>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div 
-      class="resize-handle bottom" 
-      onpointerdown={(e) => startResize(e, 'b')}
-      onpointermove={handleResize}
-      onpointerup={stopResize}
-    ></div>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div 
-      class="resize-handle bottom-right" 
-      onpointerdown={(e) => startResize(e, 'br')}
-      onpointermove={handleResize}
-      onpointerup={stopResize}
-    ></div>
-  {/if}
 </main>
 
 <style lang="scss">
@@ -590,6 +527,11 @@
     overflow: clip;
     box-sizing: border-box;
     animation: fade-in 0.3s ease-out;
+
+    &.collapsed {
+      padding-top: 0;
+      padding-bottom: 0;
+    }
   }
 
   @keyframes fade-in {
@@ -606,6 +548,7 @@
     gap: 12px;
     min-width: 1px;
     position: relative;
+    justify-content: center;
   }
 
   // ── Title Section ──
@@ -1000,34 +943,23 @@
     }
   }
 
-  // ── Resize Handles ──
-  .resize-handle {
-    position: absolute;
+  // ── Drag Visuals ──
+  .drag-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
     z-index: 9999;
-    background: transparent;
+  }
 
-    &.right {
-      top: 0;
-      right: 0;
-      width: 8px;
-      height: calc(100% - 24px);
-      cursor: ew-resize;
-    }
+  .drag-line {
+    stroke: $figma-gray-300;
+    stroke-width: 1.5px;
+  }
 
-    &.bottom {
-      left: 0;
-      bottom: 0;
-      width: calc(100% - 24px);
-      height: 8px;
-      cursor: ns-resize;
-    }
-
-    &.bottom-right {
-      right: 0;
-      bottom: 0;
-      width: 24px;
-      height: 24px;
-      cursor: nwse-resize;
-    }
+  .drag-pointer {
+    fill: $color-accent;
   }
 </style>
