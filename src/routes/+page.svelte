@@ -1,7 +1,10 @@
 <script lang="ts">
   import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
   import { fade } from 'svelte/transition';
+  import { onMount } from 'svelte';
   import Editor from '$lib/components/Editor.svelte';
+  import Lightbox from '$lib/components/Lightbox.svelte';
+  import { loadNotes, saveNotes, type Note } from '$lib/db';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -10,6 +13,10 @@
   let isMenuOpen = $state(false);
   let isEditingTitle = $state(false);
   let titleEditValue = $state('');
+
+  function focus(node: HTMLElement) {
+    node.focus();
+  }
 
   let isPinned = $state(true);
 
@@ -31,9 +38,16 @@
     isMenuOpen = false;
   }
 
-  async function startDragging(e: MouseEvent) {
+  async function startDragging(e: PointerEvent) {
     // Only initiate drag on left mouse button
     if (e.button !== 0) return;
+    
+    // Do not drag if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, textarea, .text-editor, .dropdown-item, .title-text-btn, .close-dot, .ProseMirror, .toolbar')) {
+      return;
+    }
+    
     const appWindow = getCurrentWindow();
     await appWindow.startDragging();
   }
@@ -48,15 +62,11 @@
       id: newId,
       title: 'New Note',
       archived: false,
-      content: {
-        heading1: 'Heading',
-        body: 'Start typing your note here...',
-        heading2: '',
-        list: []
-      }
+      content: '<p></p>'
     }];
     activeNoteId = newId;
     isMenuOpen = false;
+    scheduleSave();
     editTitle();
   }
 
@@ -71,6 +81,7 @@
     const note = mockNotes.find(n => n.id === activeNoteId);
     if (note && titleEditValue.trim() !== '') {
       note.title = titleEditValue;
+      scheduleSave();
     }
     isEditingTitle = false;
   }
@@ -87,6 +98,7 @@
     const note = mockNotes.find(n => n.id === activeNoteId);
     if (note) {
       note.archived = true;
+      scheduleSave();
       // Select next unarchived
       const nextUnarchived = mockNotes.find(n => !n.archived);
       if (nextUnarchived) {
@@ -101,6 +113,7 @@
     const note = mockNotes.find(n => n.id === id);
     if (note) {
       note.archived = true;
+      scheduleSave();
     }
   }
 
@@ -138,10 +151,17 @@
     isMenuOpen = false;
   }
 
+  let isWindowFocused = $state(true);
+
   function handleWindowBlur() {
     isDotDragging = false;
     hoveredToolAction = null;
     isMenuOpen = false;
+    isWindowFocused = false;
+  }
+
+  function handleWindowFocus() {
+    isWindowFocused = true;
   }
 
   function onDotPointerDown(e: PointerEvent) {
@@ -218,50 +238,74 @@
 
   let previousSize = { width: 800, height: 600 };
 
-  interface Note {
-    id: number;
-    title: string;
-    archived: boolean;
-    content: string;
+  // -- Notes State --
+  let isLoading = $state(true);
+  let mockNotes = $state<Note[]>([]);
+  let activeNoteId = $state(0);
+  let saveTimeout: ReturnType<typeof setTimeout>;
+
+  function scheduleSave() {
+    clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      saveNotes(mockNotes);
+    }, 500);
   }
 
-  let mockNotes = $state<Note[]>([
-    {
-      id: 5,
-      title: 'Tiptap styling',
-      archived: false,
-      content: `<h1>Heading Level 1</h1><p>This is a standard paragraph with <strong>bold text</strong>, <em>italic text</em>, <a href="https://example.com">hyperlink</a>, and <code>inline code</code> to test inline styles. We can also tag things like <span data-type="mention" class="mention-tag" data-id="idea">@idea</span> or <span data-type="mention" class="mention-tag" data-id="todo">@todo</span>.</p><h2>Heading Level 2</h2><p>A quick demonstration of lists:</p><ul><li><p>First item in a bullet list</p></li><li><p>Second item with some <strong>bold</strong> text</p></li><li><p>Third item</p></li></ul><ol><li><p>First item in an ordered list</p></li><li><p>Second item</p></li></ol><h2>Task List (To-do)</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>Unfinished task</p></div></li><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Completed task (strikethrough)</p></div></li></ul><h2>Code & Quote</h2><blockquote><p>This is a blockquote. It should have a border on the left and be italicized. It is useful for highlighting quotes or important notes.</p></blockquote><pre><code>function tiptapDemo() {
-  console.log("This is a code block");
-  return "Enjoy styling!";
-}</code></pre>`
-    },
-    {
-      id: 1,
-      title: 'This is the note tittle',
-      archived: false,
-      content: `<h1>This is note content</h1><p>Aliqua irure sit amet culpa aute velit aliqua id sit pariatur nisi elit nulla. Amet aliquip consectetur sunt ut eiusmod sint anim laboris dolor aliquip. Fugiat Lorem officia occaecat velit quis consectetur enim nisi sint ea occaecat deserunt magna sit fugiat.</p><h2>The quick brown fox</h2><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>Aliqua irure sit amet culpa aute</p></div></li><li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Aliqua irure sit amet culpa aute</p></div></li></ul>`
-    },
-    {
-      id: 2,
-      title: 'Lorem ipsum dolor sit amet',
-      archived: false,
-      content: `<h1>Lorem Ipsum</h1><p>Consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><h2>Dolor sit amet</h2><ul><li><p>Duis aute irure dolor in reprehenderit</p></li><li><p>Voluptate velit esse cillum dolore</p></li><li><p>Fugiat nulla pariatur excepteur</p></li></ul>`
-    },
-    {
-      id: 3,
-      title: 'Another awesome idea',
-      archived: false,
-      content: `<h1>Excepteur sint occaecat</h1><p>Sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p><h2>Cupidatat non proident</h2><ul><li><p>Nemo enim ipsam voluptatem quia</p></li><li><p>Voluptas sit aspernatur aut odit</p></li><li><p>Aut fugit sed quia consequuntur</p></li></ul>`
-    },
-    {
-      id: 4,
-      title: 'Meeting notes with team',
-      archived: false,
-      content: `<h1>Omnis iste natus error</h1><p>Sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p><h2>Nemo enim ipsam</h2><ul><li><p>Neque porro quisquam est qui</p></li><li><p>Dolorem ipsum quia dolor sit</p></li><li><p>Amet consectetur adipisci velit</p></li></ul>`
+  onMount(async () => {
+    const notes = await loadNotes();
+    if (notes.length > 0) {
+      mockNotes = notes;
+      // Select the first non-archived note
+      const first = mockNotes.find(n => !n.archived);
+      if (first) activeNoteId = first.id;
+    } else {
+      mockNotes = [{
+        id: 1,
+        title: 'Welcome to RememberMe',
+        archived: false,
+        content: `<h1>Welcome to RememberMe! 🚀</h1>
+<p>Here is a guide to all the syntaxes and features supported in this editor:</p>
+<hr>
+<h3>1. Slash Commands</h3>
+<p>Type <code>/</code> on a new line to open the slash menu. You can quickly insert Headings, Lists, Tables, Code Blocks, and more.</p>
+<h3>2. Text Formatting</h3>
+<ul>
+  <li><strong>Bold</strong>: <code>**text**</code> or <kbd>Ctrl</kbd> + <kbd>B</kbd></li>
+  <li><em>Italic</em>: <code>*text*</code> or <kbd>Ctrl</kbd> + <kbd>I</kbd></li>
+  <li><s>Strikethrough</s>: <code>~~text~~</code></li>
+  <li><code>Inline Code</code>: <code>\`text\`</code></li>
+  <li>Color Highlight: Select text and click the pink dot in the popup menu.</li>
+</ul>
+<h3>3. Lists & Tasks</h3>
+<ul>
+  <li><strong>Bullet List</strong>: Type <code>*</code> or <code>-</code> followed by a space.</li>
+  <li><strong>Numbered List</strong>: Type <code>1.</code> followed by a space.</li>
+  <li><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><strong>Task List</strong>: Type <code>[ ]</code> followed by a space.</li><li data-type="taskItem" data-checked="true">Checked task!</li></ul></li>
+</ul>
+<h3>4. Blocks</h3>
+<blockquote><p><strong>Blockquote</strong>: Type <code>&gt;</code> followed by a space.</p></blockquote>
+<pre><code class="language-javascript">// Code Block: Type \`\`\` (3 backticks) and press Space or Enter
+function sayHi() {
+  console.log("Hello!");
+}</code></pre>
+<h3>5. Tables</h3>
+<p>Use the Slash command <code>/table</code> to insert a table. Click inside the table to reveal the popup menu to add/remove rows and columns.</p>
+<h3>6. Images</h3>
+<p>You can <strong>Copy &amp; Paste</strong> images directly into the editor! Click an image to resize it or float it left/right using the popup menu.</p>
+<h3>7. Links & Mentions</h3>
+<p>Select text and click the 🔗 icon in the popup to add a link. Type <code>@</code> to open the mention menu.</p>
+<h3>8. Math Equations</h3>
+<p>Type <code>$E=mc^2$</code> to write inline math, or <code>$$</code> for block equations.</p>
+<h3>9. Smart Typography</h3>
+<p>Special characters are automatically formatted! Try typing <code>(c)</code>, <code>(r)</code>, <code>(tm)</code>, <code>-&gt;</code>, or <code>--</code>.</p>
+`
+      }];
+      activeNoteId = 1;
+      await saveNotes(mockNotes);
     }
-  ]);
+    isLoading = false;
+  });
 
-  let activeNoteId = $state(1);
   let activeNote = $derived(mockNotes.find(n => n.id === activeNoteId && !n.archived) || mockNotes.find(n => !n.archived));
 
   function selectNote(id: number) {
@@ -314,11 +358,15 @@
     isCollapsed = !isCollapsed;
     
     if (isCollapsed) {
-      const size = await appWindow.outerSize();
+      const size = await appWindow.innerSize();
       const scale = await appWindow.scaleFactor();
+      const w = size.width / scale;
       const h = size.height / scale;
       if (h > 60) {
-        previousSize = { width: size.width / scale, height: h };
+        previousSize = { width: w, height: h };
+      } else {
+        // Even if already short, update width in case they resized horizontally
+        previousSize.width = w;
       }
       
       isDropdownOpen = false; // close dropdown when collapsing
@@ -332,12 +380,18 @@
       // Remove max height constraint by setting it to a very large value instead of null
       await appWindow.setMaxSize(new LogicalSize(9999, 9999));
       // Get the current width of the window (in case they resized it while collapsed)
-      const size = await appWindow.outerSize();
+      const size = await appWindow.innerSize();
       const scale = await appWindow.scaleFactor();
       const currentWidth = size.width / scale;
+      
+      // If the width drifted by just a few pixels, ignore the drift to prevent creeping
+      const widthToRestore = Math.abs(currentWidth - previousSize.width) < 5 
+        ? previousSize.width 
+        : currentWidth;
+        
       // Restore previous size (ensure it is at least 249px tall, 240 + 9)
       const targetHeight = Math.max(249, previousSize.height);
-      await appWindow.setSize(new LogicalSize(currentWidth, targetHeight));
+      await appWindow.setSize(new LogicalSize(widthToRestore, targetHeight));
       // Restore normal min size
       await appWindow.setMinSize(new LogicalSize(356, 249));
     }
@@ -349,10 +403,11 @@
   }
 </script>
 
-<svelte:window onblur={handleWindowBlur} />
+<svelte:window onblur={handleWindowBlur} onfocus={handleWindowFocus} />
 
-<main class="app-container">
-  <div class="glass-widget" class:collapsed={isCollapsed}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<main class="app-container" onpointerdown={startDragging}>
+  <div class="glass-widget" class:collapsed={isCollapsed} style="background: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'}; transition: background-color 0.5s ease;">
 
     <!-- Main inner column: Title + Editor + Timer -->
     <div class="inner-column">
@@ -362,6 +417,29 @@
       <div class="title-section {isDropdownOpen ? 'expanded' : ''}">
         <!-- First title row (visible) -->
         <div class="title-row">
+          <!-- Title text (draggable button when not editing, input when editing) -->
+          {#if isEditingTitle}
+            <div class="title-text-btn">
+              <input 
+                type="text" 
+                class="title-input" 
+                bind:value={titleEditValue}
+                onkeydown={handleTitleKeyDown}
+                onblur={saveTitle}
+                use:focus
+              />
+            </div>
+          {:else}
+            <button 
+              class="title-text-btn" 
+              onpointerdown={onTitlePointerDown}
+              onpointermove={onTitlePointerMove}
+              onpointerup={onTitlePointerUp}
+            >
+              <span class="title-text">{activeNote?.title || 'No note selected'}</span>
+            </button>
+          {/if}
+
           <!-- Chevron icon for collapse/expand -->
           <button class="title-icon-btn" onclick={toggleCollapse} aria-label="Toggle Collapse">
             <svg class="title-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -375,27 +453,6 @@
             </svg>
           </button>
           
-          <!-- Clickable and Draggable title text -->
-          <button 
-            class="title-text-btn" 
-            onpointerdown={onTitlePointerDown}
-            onpointermove={onTitlePointerMove}
-            onpointerup={onTitlePointerUp}
-          >
-            {#if isEditingTitle}
-              <!-- svelte-ignore a11y_autofocus -->
-              <input 
-                type="text" 
-                class="title-input" 
-                bind:value={titleEditValue}
-                onkeydown={handleTitleKeyDown}
-                onblur={saveTitle}
-                autofocus 
-              />
-            {:else}
-              <span class="title-text">{activeNote?.title || 'No note selected'}</span>
-            {/if}
-          </button>
         </div>
 
         <!-- Dropdown Notes List -->
@@ -421,13 +478,14 @@
       {#if !isCollapsed}
         <!-- Text editor area -->
         <div class="text-editor">
-          {#if activeNote}
+          {#if !isLoading && activeNote}
             <Editor 
               noteId={activeNote.id}
               content={activeNote.content}
               onUpdate={(content) => {
                 if (activeNote) {
                   activeNote.content = content;
+                  scheduleSave();
                 }
               }} 
             />
@@ -503,6 +561,8 @@
   </div>
 </main>
 
+<Lightbox />
+
 <style lang="scss">
   @use '../styles/variables' as *;
 
@@ -529,8 +589,7 @@
     animation: fade-in 0.3s ease-out;
 
     &.collapsed {
-      padding-top: 0;
-      padding-bottom: 0;
+      // Padding is kept the same as expanded mode to prevent layout jump
     }
   }
 
@@ -576,8 +635,8 @@
     align-items: center;
     gap: 4px;
     opacity: 0.6;
-    padding-left: 4px;
-    padding-right: 32px;
+    padding-left: 32px;
+    padding-right: 4px;
     flex-shrink: 0;
     width: 100%;
     min-width: 0;
@@ -650,7 +709,7 @@
     border-bottom: 1px dashed $color-accent;
     outline: none;
     width: 100%;
-    padding: 0;
+    padding: 4px 0 4px 0;
     margin: 0;
     
     &:focus {
@@ -729,7 +788,7 @@
     height: 10px;
     position: absolute;
     top: 19px;
-    right: 19px;
+    left: 19px;
     background-color: rgba(0, 0, 0, 0.3);
     border-radius: 50%;
     border: none;

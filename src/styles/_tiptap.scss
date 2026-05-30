@@ -31,7 +31,11 @@
 	margin: 0 auto;
 	padding-bottom: 2rem;
 	padding-top: 1rem;
+	padding-left: 8px;
+	padding-right: 8px;
+	box-sizing: border-box;
 	flex: 1 1 auto;
+	--img-gap: 8px;
 	
 	/* Base Typography */
 	p {
@@ -129,7 +133,7 @@
 		pre {
 			background: transparent;
 			color: #e2e8f0;
-			padding: 2.5rem 1rem 1rem 1rem; /* Extra top padding so content isn't hidden behind buttons */
+			padding: 1rem 1rem 1rem 1rem; /* Extra top padding so content isn't hidden behind buttons */
 			margin: 0;
 			font-family: $font-family-mono;
 			font-size: 0.9em;
@@ -245,5 +249,132 @@
 		color: var(--placeholder-color, rgba(150, 150, 150, 0.6));
 		pointer-events: none;
 		height: 0;
+	}
+
+	/* Table Styling */
+	.tableWrapper {
+		overflow-x: auto;
+		margin: 1em 0;
+	}
+
+	table {
+		border-collapse: collapse;
+		table-layout: fixed;
+		width: 100%;
+		margin: 0;
+		overflow: hidden;
+
+		td, th {
+			min-width: 1em;
+			border: 1px solid rgba(0, 0, 0, 0.2);
+			padding: 6px 10px;
+			vertical-align: top;
+			box-sizing: border-box;
+			position: relative;
+			
+			> * {
+				margin-bottom: 0;
+			}
+		}
+
+		th {
+			font-weight: 600;
+			text-align: left;
+			background-color: rgba(0, 0, 0, 0.05);
+		}
+	}
+
+	/* Table Styling */
+	.tableWrapper {
+
+		.selectedCell:after {
+			z-index: 2;
+			position: absolute;
+			content: "";
+			left: 0; right: 0; top: 0; bottom: 0;
+			background: rgba(200, 200, 255, 0.4);
+			pointer-events: none;
+		}
+
+		.column-resize-handle {
+			position: absolute;
+			right: -2px;
+			top: 0;
+			bottom: 0;
+			width: 4px;
+			background-color: #adf;
+			pointer-events: none;
+		}
+	}
+
+	/* ── Dropcursor (Hiển thị khi kéo thả Text / Image) ── */
+	.ProseMirror-dropcursor {
+		background-color: #6464ff !important;
+		width: 2px !important;
+		border-radius: 2px;
+	}
+
+	/* ── Inline Images ── */
+	img {
+		max-width: 100%;
+		height: auto;
+		border-radius: 8px;
+		display: inline-block;
+		vertical-align: top; /* Canh lề trên hoàn hảo */
+		margin-right: var(--img-gap, 8px) !important;  /* Spacing/gap ngang */
+		margin-bottom: var(--img-gap, 8px) !important; /* Spacing/gap dọc */
+		
+		cursor: pointer;
+		transition: opacity 0.15s ease, box-shadow 0.15s ease, transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+		&:hover {
+			opacity: 0.95;
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+		}
+
+		&.ProseMirror-selectednode {
+			outline: 1px solid rgba(100, 100, 255, 1);
+			outline-offset: 2px;
+		}
+	}
+
+	/* Tự động tạo Layout Masonry khi có nhiều ảnh xếp liên tiếp trong cùng một đoạn văn */
+	p:has(> img + img) {
+		display: block;
+		column-count: 2;
+		column-gap: 12px;
+		margin: 1.5em 0;
+		
+		@media (min-width: 768px) {
+			column-count: 3;
+		}
+
+		img {
+			display: block !important;
+			width: 100% !important;
+			max-width: 100% !important;
+			margin: 0 0 12px 0 !important;
+			float: none !important;
+			break-inside: avoid;
+		}
+	}
+
+	/* Color Highlighter Extension */
+	.color-highlight {
+		white-space: nowrap;
+		position: relative;
+	}
+	
+	.color-highlight::before {
+		content: " ";
+		display: inline-block;
+		width: 1em;
+		height: 1em;
+		background-color: var(--color);
+		border: 1px solid rgba(0, 0, 0, 0.1);
+		border-radius: 2px;
+		margin-right: 0.25em;
+		vertical-align: -0.15em;
 	}
 }

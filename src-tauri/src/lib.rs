@@ -1,15 +1,39 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use std::path::PathBuf;
+
+/// Save raw image bytes to {documents}/RememberMe/images/{uuid}.{ext}
+/// Returns the absolute file path as a string.
+#[tauri::command]
+fn save_image(app: tauri::AppHandle, image_data: Vec<u8>, ext: String) -> Result<String, String> {
+    // Resolve the documents directory
+    let docs_dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("Cannot resolve documents dir: {e}"))?;
+
+    let images_dir: PathBuf = docs_dir.join("RememberMe").join("images");
+
+    // Create directory if it doesn't exist
+    std::fs::create_dir_all(&images_dir)
+        .map_err(|e| format!("Cannot create images dir: {e}"))?;
+
+    // Generate a unique filename
+    let filename = format!("{}.{}", uuid::Uuid::new_v4(), ext);
+    let file_path = images_dir.join(&filename);
+
+    std::fs::write(&file_path, &image_data)
+        .map_err(|e| format!("Cannot write image: {e}"))?;
+
+    file_path
+        .to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid file path encoding".to_string())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,28 +41,7 @@ pub fn run() {
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
 
-            #[cfg(target_os = "windows")]
-            {
-                let _ = window_vibrancy::apply_acrylic(&window, Some((0, 0, 0, 0)));
-
-                // Commented out to prevent Windows DWM hit-test conflicts that break dragging
-                /*
-                if let Ok(hwnd) = window.hwnd() {
-                    use windows_sys::Win32::Graphics::Dwm::{
-                        DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND,
-                    };
-                    let preference = DWMWCP_ROUND;
-                    unsafe {
-                        let _ = DwmSetWindowAttribute(
-                            hwnd.0 as _,
-                            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
-                            &preference as *const _ as *const _,
-                            std::mem::size_of::<i32>() as u32,
-                        );
-                    }
-                }
-                */
-            }
+            // No OS-level window vibrancy needed as per user request
 
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "Show", true, None::<&str>)?;
@@ -46,7 +49,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show_i, &hide_i, &quit_i])?;
 
 
-            let tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .icon(app.default_window_icon().unwrap().clone())
@@ -101,7 +104,8 @@ pub fn run() {
         })
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .plugin(tauri_plugin_fs::init())
+        .invoke_handler(tauri::generate_handler![save_image])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -16,14 +16,62 @@
 	import { MathExtension } from '@aarkue/tiptap-math-extension';
 	import { fade } from 'svelte/transition';
 	
+	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import { readFile } from '@tauri-apps/plugin-fs';
+	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+	
+	import { Table } from '@tiptap/extension-table';
+	import { TableRow } from '@tiptap/extension-table-row';
+	import { TableHeader } from '@tiptap/extension-table-header';
+	import { TableCell } from '@tiptap/extension-table-cell';
+	import Image from '@tiptap/extension-image';
+	
 	import { SlashCommands } from './slashExtension';
 	import { MentionExtension } from './mentionExtension';
 	import { CustomCodeBlock } from './CustomCodeBlock';
 	import { SmartSelectAll } from './SmartSelectAll';
+	import { ImagePasteExtension } from './ImagePasteExtension';
+	import { ColorHighlighter } from './ColorHighlighter';
+
+	const CustomImage = Image.extend({
+		addAttributes() {
+			return {
+				...this.parent?.(),
+				width: {
+					default: '50%',
+					parseHTML: element => {
+						const rawWidth = element.style.width || element.getAttribute('width') || '50%';
+						const match = rawWidth.match(/(\d+(?:\.\d+)?%)/);
+						return match ? match[1] : '50%';
+					},
+					renderHTML: attributes => {
+						return {
+							style: `width: calc(${attributes.width} - var(--img-gap, 8px)); max-width: 100%;`
+						};
+					}
+				},
+				float: {
+					default: 'none',
+					parseHTML: element => element.style.float || 'none',
+					renderHTML: attributes => {
+						if (!attributes.float || attributes.float === 'none') {
+							return {
+								style: 'float: none; margin: 1em 0;'
+							};
+						}
+						const margin = attributes.float === 'left' ? '0.5em 1.5em 0.5em 0' : '0.5em 0 0.5em 1.5em';
+						return {
+							style: `float: ${attributes.float}; margin: ${margin};`
+						};
+					}
+				}
+			};
+		}
+	});
 
 	interface Props {
 		noteId: number;
-		content: object | null;
+		content: object | string | null;
 		onUpdate?: (content: object) => void;
 	}
 
@@ -32,14 +80,26 @@
 	let element = $state<HTMLElement>();
 	let bubbleMenuElement = $state<HTMLElement>();
 	let editor = $state<Editor>();
-	let currentNoteId = $state(noteId);
+	let currentNoteId = $state<number>();
 	let updateTimeout: ReturnType<typeof setTimeout>;
+	let unlistenDrop: (() => void) | undefined;
 
 	let isLinkModalOpen = false; // Bỏ
 	let showLinkInput = $state(false);
 	let linkUrl = $state('');
 	let originalLinkUrl = $state('');
 	let linkInputEl = $state<HTMLInputElement>();
+
+	let activeStates = $state({
+		table: false,
+		bold: false,
+		italic: false,
+		link: false,
+		textStyle: false,
+		image: false,
+		imageWidth: '50%',
+		imageFloat: 'none'
+	});
 
 	const lowlight = createLowlight(common);
 
@@ -63,8 +123,19 @@
 				CustomCodeBlock.configure({
 					lowlight,
 				}),
+				Table.configure({
+					resizable: true,
+				}),
+				TableRow,
+				TableHeader,
+				TableCell,
 				SmartSelectAll,
 				MathExtension.configure({ evaluation: false }),
+				CustomImage.configure({
+					inline: false,
+					allowBase64: false,
+				}),
+				ImagePasteExtension,
 				TaskList,
 				TaskItem.configure({
 					nested: true, // Hỗ trợ Enter ở cuối sẽ tạo task mới
@@ -76,12 +147,21 @@
 				TextStyle,
 				Color,
 				Typography, // Tự động format ký tự đặc biệt như (c) => ©, -- => —
+				ColorHighlighter,
 				SlashCommands,
 				MentionExtension,
 				BubbleMenuExtension.configure({
 					element: bubbleMenuElement!,
+					options: {
+						placement: 'bottom-start',
+					},
 					shouldShow: ({ editor, view, state, from, to }) => {
 						if (showLinkInput) return true;
+						
+						// Show bubble menu inside table even if selection is empty
+						if (editor.isActive('table')) {
+							return true;
+						}
 						
 						const { doc, selection } = state;
 						const { empty } = selection;
@@ -93,6 +173,19 @@
 				})
 			],
 			content: content,
+			onTransaction: ({ editor }) => {
+				activeStates.table = editor.isActive('table');
+				activeStates.bold = editor.isActive('bold');
+				activeStates.italic = editor.isActive('italic');
+				activeStates.link = editor.isActive('link');
+				activeStates.textStyle = editor.isActive('textStyle', { color: '#ff08f3' });
+				activeStates.image = editor.isActive('image');
+				if (activeStates.image) {
+					const attrs = editor.getAttributes('image');
+					activeStates.imageWidth = attrs.width || '50%';
+					activeStates.imageFloat = attrs.float || 'none';
+				}
+			},
 			onUpdate: ({ editor }) => {
 				// Tối ưu Performance bằng Debounce (300ms)
 				clearTimeout(updateTimeout);
@@ -103,6 +196,49 @@
 				}, 300);
 			}
 		});
+		currentNoteId = noteId;
+
+		getCurrentWindow().onDragDropEvent(async (event) => {
+			if (event.payload.type === 'drop') {
+				const { paths, position } = event.payload;
+				const editorRect = element?.getBoundingClientRect();
+				
+				// Kiểm tra xem vị trí thả có nằm trong editor không
+				if (editor && editorRect && 
+					position.x >= editorRect.left && position.x <= editorRect.right &&
+					position.y >= editorRect.top && position.y <= editorRect.bottom) {
+					
+					// Tìm vị trí text tương ứng trong Editor
+					const coordinates = editor.view.posAtCoords({ left: position.x, top: position.y });
+					const pos = coordinates?.pos ?? editor.state.selection.from;
+					
+					for (const path of paths) {
+						const extMatch = path.match(/\.(png|jpg|jpeg|gif|webp)$/i);
+						if (!extMatch) continue;
+						
+						const ext = extMatch[1].toLowerCase();
+						try {
+							const fileData = await readFile(path);
+							const bytes = Array.from(fileData);
+							const savedPath = await invoke<string>('save_image', {
+								imageData: bytes,
+								ext: ext === 'jpeg' ? 'jpg' : ext,
+							});
+							const src = convertFileSrc(savedPath);
+							
+							const { schema } = editor.state;
+							const node = schema.nodes.image.create({ src, title: savedPath });
+							const tr = editor.state.tr.insert(pos, node);
+							editor.view.dispatch(tr);
+						} catch (err) {
+							console.error('[Tauri Drop] Failed to save image:', err);
+						}
+					}
+				}
+			}
+		}).then(unlisten => {
+			unlistenDrop = unlisten;
+		});
 	});
 
 	onDestroy(() => {
@@ -110,6 +246,7 @@
 			editor.destroy();
 		}
 		clearTimeout(updateTimeout);
+		if (unlistenDrop) unlistenDrop();
 	});
 
 	$effect(() => {
@@ -182,45 +319,149 @@
 				}}
 				onblur={cancelLink}
 			/>
-			<div class="bubble-buttons" style="display: {showLinkInput ? 'none' : 'flex'}; gap: 4px;">
-				<button 
-					class="bubble-btn" 
-					class:is-active={editor?.isActive('bold')}
-					onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().toggleBold().run() }}
-				>
-					B
-				</button>
-				<button 
-					class="bubble-btn" 
-					class:is-active={editor?.isActive('italic')}
-					onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().toggleItalic().run() }}
-				>
-					I
-				</button>
-				<button 
-					class="bubble-btn" 
-					class:is-active={editor?.isActive('link')}
-					onmousedown={(e) => { e.preventDefault(); setLink() }}
-				>
-					🔗
-				</button>
-				<div class="bubble-divider"></div>
-				<button 
-					class="bubble-btn color-btn" 
-					class:is-active={editor?.isActive('textStyle', { color: '#ff08f3' })}
-					onmousedown={(e) => { 
-						e.preventDefault(); 
-						if (editor?.isActive('textStyle', { color: '#ff08f3' })) {
-							editor?.chain().focus().unsetColor().run();
-						} else {
-							editor?.chain().focus().setColor('#ff08f3').run();
-						}
-					}}
-					title="Highlight Accent Color"
-				>
-					<span class="color-dot"></span>
-				</button>
-			</div>
+			{#if activeStates.image}
+				<div class="bubble-buttons" style="display: flex; gap: 4px; align-items: center;">
+					<!-- Align/Float Left -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageFloat === 'left'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { float: 'left' }).run();
+						}}
+						title="Float Left"
+					>
+						⬅️
+					</button>
+					<!-- Align/Float Center (None) -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageFloat === 'none'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { float: 'none' }).run();
+						}}
+						title="Center (No Float)"
+					>
+						⏹️
+					</button>
+					<!-- Align/Float Right -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageFloat === 'right'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { float: 'right' }).run();
+						}}
+						title="Float Right"
+					>
+						➡️
+					</button>
+					
+					<div class="bubble-divider"></div>
+					
+					<!-- Width 25% -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageWidth === '25%'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { width: '25%' }).run();
+						}}
+						title="Width 25%"
+						style="font-size: 11px;"
+					>
+						25%
+					</button>
+					<!-- Width 50% -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageWidth === '50%'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { width: '50%' }).run();
+						}}
+						title="Width 50%"
+						style="font-size: 11px;"
+					>
+						50%
+					</button>
+					<!-- Width 75% -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageWidth === '75%'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { width: '75%' }).run();
+						}}
+						title="Width 75%"
+						style="font-size: 11px;"
+					>
+						75%
+					</button>
+					<!-- Width 100% -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.imageWidth === '100%'}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							editor?.chain().focus().updateAttributes('image', { width: '100%' }).run();
+						}}
+						title="Width 100%"
+						style="font-size: 11px;"
+					>
+						100%
+					</button>
+				</div>
+			{:else}
+				<div class="bubble-buttons" style="display: {showLinkInput ? 'none' : 'flex'}; gap: 4px;">
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.bold}
+						onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().toggleBold().run() }}
+					>
+						B
+					</button>
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.italic}
+						onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().toggleItalic().run() }}
+					>
+						I
+					</button>
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.link}
+						onmousedown={(e) => { e.preventDefault(); setLink() }}
+					>
+						🔗
+					</button>
+					<div class="bubble-divider"></div>
+					<button 
+						class="bubble-btn color-btn" 
+						class:is-active={activeStates.textStyle}
+						onmousedown={(e) => { 
+							e.preventDefault(); 
+							if (editor?.isActive('textStyle', { color: '#ff08f3' })) {
+								editor?.chain().focus().unsetColor().run();
+							} else {
+								editor?.chain().focus().setColor('#ff08f3').run();
+							}
+						}}
+						title="Highlight Accent Color"
+					>
+						<span class="color-dot"></span>
+					</button>
+					{#if activeStates.table}
+						<div class="bubble-divider"></div>
+						<button class="bubble-btn" title="Add Row Below" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().addRowAfter().run() }}>R+</button>
+						<button class="bubble-btn" title="Add Col Right" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().addColumnAfter().run() }}>C+</button>
+						<button class="bubble-btn" title="Delete Row" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteRow().run() }}>R-</button>
+						<button class="bubble-btn" title="Delete Col" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteColumn().run() }}>C-</button>
+						<button class="bubble-btn" style="color: #ff4444;" title="Delete Table" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteTable().run() }}>X</button>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -273,11 +514,6 @@
 		border: 1px solid rgba(0, 0, 0, 0.08);
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); /* Tăng bóng đổ để popup nổi bật hơn */
 		transition: opacity 0.2s ease;
-		
-		&.hidden {
-			opacity: 0;
-			pointer-events: none;
-		}
 	}
 
 	.bubble-btn {

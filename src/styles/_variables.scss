@@ -40,10 +40,7 @@ $glass-shadow: 0 8px 32px 0 $figma-black-alpha-200;
 
 // Mixins
 @mixin glass-panel {
-  // Layered linear gradients for the ultimate premium glass texture sheen
-  background: linear-gradient(rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 100%), $glass-bg-base;
-  backdrop-filter: blur(30px);
-  -webkit-backdrop-filter: blur(30px);
+  background: #ffffff;
   border: 1px solid $glass-border;
   box-shadow: $glass-shadow;
   border-radius: 12px; // Matches Figma design exactly

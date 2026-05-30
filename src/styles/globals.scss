@@ -118,6 +118,11 @@
 }
 
 
+:root {
+  --bg-focused: rgb(255, 255, 255);
+  --bg-unfocused: #ececec;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }

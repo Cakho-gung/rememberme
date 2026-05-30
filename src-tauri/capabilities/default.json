@@ -13,6 +13,13 @@
     "core:window:allow-inner-size",
     "core:window:allow-scale-factor",
     "core:window:allow-set-min-size",
-    "core:window:allow-set-max-size"
+    "core:window:allow-set-max-size",
+    "fs:allow-read-file",
+    "fs:allow-read-text-file",
+    "fs:allow-write-file",
+    "fs:allow-write-text-file",
+    "fs:allow-mkdir",
+    "fs:allow-exists",
+    "fs:scope-document-recursive"
   ]
 }

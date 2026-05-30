@@ -26,15 +26,15 @@ export const SlashCommands = Extension.create({
 							},
 						},
 						{
-							title: 'Bullet List',
-							command: ({ editor, range }: any) => {
-								editor.chain().focus().deleteRange(range).toggleBulletList().run();
-							},
-						},
-						{
 							title: 'Code Block',
 							command: ({ editor, range }: any) => {
 								editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
+							},
+						},
+						{
+							title: 'Table',
+							command: ({ editor, range }: any) => {
+								editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
 							},
 						}
 					]
@@ -51,24 +51,40 @@ export const SlashCommands = Extension.create({
 					let currentProps: any;
 
 					const renderComponent = () => {
-						if (svelteComponent) {
-							unmount(svelteComponent);
-						}
-						svelteComponent = mount(SlashMenu, {
-							target: componentWrapper,
-							props: {
-								items: currentItems,
-								selectedIndex: selectedIndex,
-								command: (item: any) => {
-									// Execute command directly bypassing suggestion layer focus issues
-									item.command({ editor: currentProps.editor, range: currentProps.range });
-								},
-								setSelectedIndex: (index: number) => {
-									selectedIndex = index;
-									renderComponent();
+						if (!svelteComponent) {
+							svelteComponent = mount(SlashMenu, {
+								target: componentWrapper,
+								props: {
+									items: currentItems,
+									selectedIndex: selectedIndex,
+									command: (item: any) => {
+										item.command({ editor: currentProps.editor, range: currentProps.range });
+									},
+									setSelectedIndex: (index: number) => {
+										// We do nothing here to avoid re-mounting on hover, CSS handles hover
+									}
 								}
-							}
-						});
+							});
+						} else {
+							// Update the component in Svelte 5 by passing new props.
+							// In Svelte 5, setting properties on the exported instance works for non-reactive root props,
+							// but the best way is to destroy and recreate IF items changed drastically,
+							// OR just destroy/recreate for now but ONLY on keydown, not hover.
+							unmount(svelteComponent);
+							svelteComponent = mount(SlashMenu, {
+								target: componentWrapper,
+								props: {
+									items: currentItems,
+									selectedIndex: selectedIndex,
+									command: (item: any) => {
+										item.command({ editor: currentProps.editor, range: currentProps.range });
+									},
+									setSelectedIndex: (index: number) => {
+										// Disable hover setting selected index to fix click unmount issue
+									}
+								}
+							});
+						}
 					};
 
 					return {
