@@ -49,11 +49,10 @@
 	.slash-menu {
 		display: flex;
 		flex-direction: column;
-		background: rgba(255, 255, 255, 0.8);
-		backdrop-filter: blur(12px);
+		background: #ffffff;
+		border: 1px solid rgba(0, 0, 0, 0.1);
 		border-radius: 8px;
 		padding: 4px;
-		box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 		min-width: 180px;
 	}
 	.slash-menu button {

@@ -28,27 +28,53 @@ export const CustomCodeBlock = CodeBlockLowlight.extend({
       actionsContainer.contentEditable = 'false';
 
       // --- Language Dropdown ---
-      const langSelect = document.createElement('select');
-      langSelect.classList.add('code-lang-select');
+      const dropdownWrapper = document.createElement('div');
+      dropdownWrapper.classList.add('custom-lang-dropdown');
+      
+      const dropdownBtn = document.createElement('button');
+      dropdownBtn.classList.add('dropdown-btn');
+      dropdownBtn.innerHTML = `<span>Plain Text</span> <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+      
+      const dropdownMenu = document.createElement('div');
+      dropdownMenu.classList.add('dropdown-menu');
       
       COMMON_LANGUAGES.forEach(lang => {
-        const option = document.createElement('option');
-        option.value = lang.value;
-        option.innerText = lang.label;
-        langSelect.appendChild(option);
+        const item = document.createElement('div');
+        item.classList.add('dropdown-item');
+        item.innerText = lang.label;
+        item.dataset.value = lang.value;
+        dropdownMenu.appendChild(item);
       });
-
-      // Update select value when node changes
-      const updateLanguage = (currentNode: typeof node) => {
-        const lang = currentNode.attrs.language || 'text';
-        langSelect.value = lang;
-        // Update the code class for highlight.js themes
-        code.className = `hljs language-${lang}`;
-      };
-
-      langSelect.addEventListener('change', (e) => {
-        const target = e.target as HTMLSelectElement;
-        const newLang = target.value;
+      
+      dropdownWrapper.append(dropdownBtn, dropdownMenu);
+      
+      // Toggle logic
+      let isOpen = false;
+      dropdownBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        isOpen = !isOpen;
+        dropdownWrapper.classList.toggle('open', isOpen);
+      });
+      
+      // Close on outside click
+      document.addEventListener('mousedown', (e) => {
+        if (!dropdownWrapper.contains(e.target as Node)) {
+          isOpen = false;
+          dropdownWrapper.classList.remove('open');
+        }
+      });
+      
+      // Item click logic
+      dropdownMenu.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const item = (e.target as HTMLElement).closest('.dropdown-item') as HTMLElement;
+        if (!item) return;
+        const newLang = item.dataset.value;
+        isOpen = false;
+        dropdownWrapper.classList.remove('open');
+        
         if (typeof getPos === 'function') {
           const pos = getPos();
           if (typeof pos === 'number') {
@@ -61,6 +87,24 @@ export const CustomCodeBlock = CodeBlockLowlight.extend({
           }
         }
       });
+
+      // Update select value when node changes
+      const updateLanguage = (currentNode: typeof node) => {
+        const lang = currentNode.attrs.language || 'text';
+        const langLabel = COMMON_LANGUAGES.find(l => l.value === lang)?.label || lang;
+        dropdownBtn.querySelector('span')!.innerText = langLabel;
+        // Update the code class for highlight.js themes
+        code.className = `hljs language-${lang}`;
+        
+        // Update active class in menu
+        Array.from(dropdownMenu.children).forEach(child => {
+          if ((child as HTMLElement).dataset.value === lang) {
+            child.classList.add('active');
+          } else {
+            child.classList.remove('active');
+          }
+        });
+      };
 
       // --- Copy Button ---
       const button = document.createElement('button');
@@ -97,7 +141,7 @@ export const CustomCodeBlock = CodeBlockLowlight.extend({
         }, 2000);
       });
 
-      actionsContainer.append(langSelect, button);
+      actionsContainer.append(dropdownWrapper, button);
 
       const pre = document.createElement('pre');
       const code = document.createElement('code');
@@ -120,6 +164,19 @@ export const CustomCodeBlock = CodeBlockLowlight.extend({
           updateLanguage(updatedNode);
           return true;
         },
+        stopEvent: (event: Event) => {
+          if (event.target && actionsContainer.contains(event.target as Node)) {
+            return true;
+          }
+          return false;
+        },
+        ignoreMutation: (mutation: any) => {
+          if (mutation.type === 'selection') return false;
+          if (actionsContainer.contains(mutation.target)) {
+            return true;
+          }
+          return false;
+        }
       };
     };
   },

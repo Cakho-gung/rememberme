@@ -3,43 +3,48 @@ import Suggestion from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import tippy from 'tippy.js';
 import { mount, unmount } from 'svelte';
-import SlashMenu from './SlashMenu.svelte';
+import EmojiMenu from './EmojiMenu.svelte';
 
-export const SlashCommands = Extension.create({
-	name: 'slashCommands',
+const EMOJI_LIST = [
+	{ name: 'anguished', emoji: '😧' },
+	{ name: 'astonished', emoji: '😲' },
+	{ name: 'blush', emoji: '😊' },
+	{ name: 'cold_face', emoji: '🥶' },
+	{ name: 'cold_sweat', emoji: '😰' },
+	{ name: 'confounded', emoji: '😖' },
+	{ name: 'confused', emoji: '😕' },
+	{ name: 'cowboy_hat_face', emoji: '🤠' },
+	{ name: 'smile', emoji: '😄' },
+	{ name: 'laughing', emoji: '😆' },
+	{ name: 'wink', emoji: '😉' },
+	{ name: 'heart', emoji: '❤️' },
+	{ name: 'thumbsup', emoji: '👍' },
+	{ name: 'thumbsdown', emoji: '👎' },
+	{ name: 'fire', emoji: '🔥' },
+	{ name: 'rocket', emoji: '🚀' },
+	{ name: 'thinking', emoji: '🤔' },
+	{ name: 'sob', emoji: '😭' },
+	{ name: 'joy', emoji: '😂' },
+	{ name: 'sweat_smile', emoji: '😅' },
+	{ name: 'sunglasses', emoji: '😎' },
+	{ name: 'star', emoji: '⭐' },
+	{ name: 'check', emoji: '✅' },
+	{ name: 'cross', emoji: '❌' },
+	{ name: 'party', emoji: '🎉' },
+	{ name: 'eyes', emoji: '👀' },
+	{ name: 'sparkles', emoji: '✨' },
+];
+
+export const EmojiExtension = Extension.create({
+	name: 'emojiSuggestion',
 
 	addOptions() {
 		return {
 			suggestion: {
-				char: '/',
+				char: ':',
 				items: ({ query }: { query: string }) => {
-					return [
-						{
-							title: 'Heading 1',
-							command: ({ editor, range }: any) => {
-								editor.chain().focus().deleteRange(range).setNode('heading', { level: 1 }).run();
-							},
-						},
-						{
-							title: 'Heading 2',
-							command: ({ editor, range }: any) => {
-								editor.chain().focus().deleteRange(range).setNode('heading', { level: 2 }).run();
-							},
-						},
-						{
-							title: 'Code Block',
-							command: ({ editor, range }: any) => {
-								editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
-							},
-						},
-						{
-							title: 'Table',
-							command: ({ editor, range }: any) => {
-								editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-							},
-						}
-					]
-						.filter(item => item.title.toLowerCase().startsWith(query.toLowerCase()))
+					return EMOJI_LIST
+						.filter(item => item.name.toLowerCase().includes(query.toLowerCase()))
 						.slice(0, 10);
 				},
 
@@ -53,35 +58,30 @@ export const SlashCommands = Extension.create({
 
 					const renderComponent = () => {
 						if (!svelteComponent) {
-							svelteComponent = mount(SlashMenu, {
+							svelteComponent = mount(EmojiMenu, {
 								target: componentWrapper,
 								props: {
 									items: currentItems,
 									selectedIndex: selectedIndex,
 									command: (item: any) => {
-										item.command({ editor: currentProps.editor, range: currentProps.range });
+										currentProps.editor.chain().focus().deleteRange(currentProps.range).insertContent(item.emoji).run();
 									},
 									setSelectedIndex: (index: number) => {
-										// We do nothing here to avoid re-mounting on hover, CSS handles hover
+										// Hover handling
 									}
 								}
 							});
 						} else {
-							// Update the component in Svelte 5 by passing new props.
-							// In Svelte 5, setting properties on the exported instance works for non-reactive root props,
-							// but the best way is to destroy and recreate IF items changed drastically,
-							// OR just destroy/recreate for now but ONLY on keydown, not hover.
 							unmount(svelteComponent);
-							svelteComponent = mount(SlashMenu, {
+							svelteComponent = mount(EmojiMenu, {
 								target: componentWrapper,
 								props: {
 									items: currentItems,
 									selectedIndex: selectedIndex,
 									command: (item: any) => {
-										item.command({ editor: currentProps.editor, range: currentProps.range });
+										currentProps.editor.chain().focus().deleteRange(currentProps.range).insertContent(item.emoji).run();
 									},
 									setSelectedIndex: (index: number) => {
-										// Disable hover setting selected index to fix click unmount issue
 									}
 								}
 							});
@@ -97,7 +97,6 @@ export const SlashCommands = Extension.create({
 							
 							renderComponent();
 
-							// Sử dụng tippy.js để mount Component nổi lên tại tọa độ con trỏ (clientRect)
 							popup = tippy('body', {
 								getReferenceClientRect: props.clientRect,
 								appendTo: () => document.body,
@@ -107,7 +106,7 @@ export const SlashCommands = Extension.create({
 								trigger: 'manual',
 								placement: 'bottom-start',
 								animation: 'fade',
-								theme: 'light', // Tippy default light or you can customize
+								theme: 'light',
 							});
 						},
 
@@ -140,7 +139,7 @@ export const SlashCommands = Extension.create({
 								if (currentItems.length > 0) {
 									props.event.preventDefault();
 									const item = currentItems[selectedIndex];
-									item.command({ editor: currentProps.editor, range: currentProps.range });
+									currentProps.editor.chain().focus().deleteRange(currentProps.range).insertContent(item.emoji).run();
 									return true;
 								}
 								return false;
@@ -172,7 +171,7 @@ export const SlashCommands = Extension.create({
 		return [
 			Suggestion({
 				editor: this.editor,
-				pluginKey: new PluginKey('slashCommandsKey'),
+				pluginKey: new PluginKey('emojiSuggestionKey'),
 				...this.options.suggestion,
 			}),
 		];

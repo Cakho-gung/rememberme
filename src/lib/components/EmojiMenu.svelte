@@ -1,19 +1,24 @@
 <script lang="ts">
+	interface EmojiItem {
+		name: string;
+		emoji: string;
+	}
+
 	interface Props {
-		items: string[];
+		items: EmojiItem[];
 		selectedIndex: number;
-		command: (item: any) => void;
+		command: (item: EmojiItem) => void;
 		setSelectedIndex: (index: number) => void;
 	}
 	let { items, selectedIndex, command, setSelectedIndex }: Props = $props();
 
-	function selectItem(e: MouseEvent, item: string) {
+	function selectItem(e: MouseEvent, item: EmojiItem) {
 		e.preventDefault();
-		command({ id: item, label: item });
+		command(item);
 	}
 </script>
 
-<div class="mention-menu">
+<div class="emoji-menu">
 	<ul>
 		{#if items.length > 0}
 			{#each items as item, index}
@@ -23,7 +28,8 @@
 						onmousedown={(e) => selectItem(e, item)}
 						onmouseenter={() => setSelectedIndex(index)}
 					>
-						@{item}
+						<span class="emoji">{item.emoji}</span>
+						<span class="name">:{item.name}:</span>
 					</button>
 				</li>
 			{/each}
@@ -45,17 +51,21 @@
 		margin: 0;
 		padding: 0;
 	}
-	.mention-menu {
+	.emoji-menu {
 		display: flex;
 		flex-direction: column;
 		background: #ffffff;
 		border: 1px solid rgba(0, 0, 0, 0.1);
 		border-radius: 8px;
 		padding: 4px;
-		min-width: 150px;
+		min-width: 180px;
+		max-height: 250px;
+		overflow-y: auto;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 	}
-	.mention-menu button {
-		display: block;
+	.emoji-menu button {
+		display: flex;
+		align-items: center;
 		width: 100%;
 		text-align: left;
 		padding: 8px 12px;
@@ -66,15 +76,22 @@
 		font-family: inherit;
 		font-size: 14px;
 		color: #333;
+		gap: 8px;
 	}
-	.mention-menu button:hover, .mention-menu button.is-active {
+	.emoji-menu button:hover, .emoji-menu button.is-active {
 		background: rgba(0, 0, 0, 0.05);
 	}
-	.mention-menu button.empty-btn {
+	.emoji-menu button.empty-btn {
 		cursor: default;
 		color: #999;
 	}
-	.mention-menu button.empty-btn:hover {
+	.emoji-menu button.empty-btn:hover {
 		background: transparent;
+	}
+	.emoji {
+		font-size: 16px;
+	}
+	.name {
+		color: #555;
 	}
 </style>

@@ -21,28 +21,27 @@ $figma-white-alpha-0: rgba(255, 255, 255, 0);
 $figma-black-alpha-200: rgba(0, 0, 0, 0.17);
 
 // Theme Color Alias (Change this color to synchronously update the entire application theme!)
-$theme-primary: $figma-orange-500;
-$theme-primary-light: $figma-orange-100;
+$theme-primary: var(--color-accent, #ff08f3);
+$theme-primary-light: var(--color-accent-light, #fff6f0);
 
 // Theme Mapping
-$color-bg: transparent;
-$color-text: $figma-gray-800;
-$color-text-muted: $figma-gray-600;
+$color-bg: var(--color-bg, transparent);
+$color-text: var(--color-text, $figma-gray-800);
+$color-text-muted: var(--color-text-muted, $figma-gray-600);
 
 $color-accent: $theme-primary;
-$color-accent-hover: darken($theme-primary, 5%);
+$color-accent-hover: var(--color-accent-hover, #e600db);
 $color-danger: #F3343A;
 
 // Glassmorphism Tokens (Figma Node 628:2447 specs)
-$glass-bg-base: $figma-white-alpha-500;
-$glass-border: rgba(255, 255, 255, 0.45);
-$glass-shadow: 0 8px 32px 0 $figma-black-alpha-200;
+$glass-bg-base: var(--glass-bg-base, $figma-white-alpha-500);
+$glass-border: var(--glass-border, rgba(255, 255, 255, 0.45));
+$glass-shadow: var(--glass-shadow, 0 8px 32px 0 $figma-black-alpha-200);
 
 // Mixins
 @mixin glass-panel {
   background: #ffffff;
-  border: 1px solid $glass-border;
-  box-shadow: $glass-shadow;
+  border: none;
   border-radius: 12px; // Matches Figma design exactly
 }
 

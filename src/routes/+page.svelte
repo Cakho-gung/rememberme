@@ -1,9 +1,10 @@
 <script lang="ts">
   import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
   import { fade } from 'svelte/transition';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import Editor from '$lib/components/Editor.svelte';
   import Lightbox from '$lib/components/Lightbox.svelte';
+  import TimerWidget from '$lib/components/TimerWidget.svelte';
   import { loadNotes, saveNotes, type Note } from '$lib/db';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
@@ -149,6 +150,7 @@
     isDotDragging = false;
     hoveredToolAction = null;
     isMenuOpen = false;
+    isAccentMenuOpen = false;
   }
 
   let isWindowFocused = $state(true);
@@ -157,11 +159,29 @@
     isDotDragging = false;
     hoveredToolAction = null;
     isMenuOpen = false;
+    isAccentMenuOpen = false;
     isWindowFocused = false;
   }
 
   function handleWindowFocus() {
     isWindowFocused = true;
+  }
+
+  function handleWindowPointerDown(e: PointerEvent) {
+    const target = e.target as HTMLElement;
+    
+    if (isMenuOpen) {
+      if (!target.closest('.close-dot') && !target.closest('.toolbar') && !target.closest('.theme-toggle') && !target.closest('.accent-toggle') && !target.closest('.accent-menu')) {
+        isMenuOpen = false;
+        isAccentMenuOpen = false;
+      }
+    }
+    
+    if (isDropdownOpen && !isCollapsed) {
+      if (!target.closest('.title-section')) {
+        isDropdownOpen = false;
+      }
+    }
   }
 
   function onDotPointerDown(e: PointerEvent) {
@@ -223,8 +243,13 @@
         else if (action === 'pin') togglePin();
         else if (action === 'settings') handleSettings();
         else if (action === 'exit') closeApp();
+        else if (action === 'theme') toggleTheme();
+        else if (action === 'accent') toggleAccentMenu();
       }
-      isMenuOpen = false;
+      
+      if (action !== 'accent') {
+        isMenuOpen = false;
+      }
     }
   }
 
@@ -237,6 +262,49 @@
   }
 
   let previousSize = { width: 800, height: 600 };
+
+  // -- Theme State --
+  let isDarkMode = $state(false);
+
+  function toggleTheme() {
+    isDarkMode = !isDarkMode;
+    if (isDarkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('theme', 'light');
+    }
+  }
+
+  // -- Accent Color State --
+  const accentColors = [
+    { name: 'Green', hex: '#38AA57', hover: '#38AA57', text: '#ffffff' },
+    { name: 'Blue', hex: '#1484FF', hover: '#1484FF', text: '#ffffff' },
+    { name: 'Pink', hex: '#E609B2', hover: '#E609B2', text: '#ffffff' },
+    { name: 'Orange', hex: '#ff6c0aff', hover: '#ff6c0aff', text: '#ffffff' },
+    { name: 'Yellow', hex: '#F7CF27', hover: '#F7CF27', text: '#27251eff' },
+    { name: 'Red', hex: '#F3343A', hover: '#F3343A', text: '#ffffff' },
+    { name: 'Purple', hex: '#8B2DF6', hover: '#8B2DF6', text: '#ffffff' },
+    { name: 'Teal', hex: '#00c0caff', hover: '#00c0caff', text: '#ffffff' }
+  ];
+  let currentAccent = $state(accentColors[0]);
+  let isAccentMenuOpen = $state(false);
+
+  function toggleAccentMenu() {
+    isAccentMenuOpen = !isAccentMenuOpen;
+  }
+
+  function selectAccentColor(e: Event, color: typeof accentColors[0]) {
+    e.stopPropagation();
+    currentAccent = color;
+    document.documentElement.style.setProperty('--color-accent', color.hex);
+    document.documentElement.style.setProperty('--color-accent-hover', color.hover);
+    document.documentElement.style.setProperty('--color-accent-text', color.text);
+    localStorage.setItem('accentColor', JSON.stringify(color));
+    isAccentMenuOpen = false;
+    isMenuOpen = false;
+  }
 
   // -- Notes State --
   let isLoading = $state(true);
@@ -252,6 +320,25 @@
   }
 
   onMount(async () => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      isDarkMode = true;
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+
+    const savedAccent = localStorage.getItem('accentColor');
+    if (savedAccent) {
+      try {
+        const color = JSON.parse(savedAccent);
+        currentAccent = color;
+        document.documentElement.style.setProperty('--color-accent', color.hex);
+        document.documentElement.style.setProperty('--color-accent-hover', color.hover);
+        document.documentElement.style.setProperty('--color-accent-text', color.text || '#ffffff');
+      } catch (e) {}
+    } else {
+      document.documentElement.style.setProperty('--color-accent-text', currentAccent.text);
+    }
+
     const notes = await loadNotes();
     if (notes.length > 0) {
       mockNotes = notes;
@@ -352,47 +439,40 @@ function sayHi() {
     // It was a click (didn't move much)
     toggleDropdown();
   }
-
   async function toggleCollapse() {
     const appWindow = getCurrentWindow();
-    isCollapsed = !isCollapsed;
     
-    if (isCollapsed) {
+    if (!isCollapsed) {
+      // 1. Calculate current size
       const size = await appWindow.innerSize();
       const scale = await appWindow.scaleFactor();
       const w = size.width / scale;
       const h = size.height / scale;
+      
       if (h > 60) {
         previousSize = { width: w, height: h };
       } else {
-        // Even if already short, update width in case they resized horizontally
         previousSize.width = w;
       }
       
-      isDropdownOpen = false; // close dropdown when collapsing
+      isDropdownOpen = false;
+      isCollapsed = true;
       
-      // Update min size to allow shrinking (48 + 9 = 57 for height)
-      await appWindow.setMinSize(new LogicalSize(356, 57));
-      await appWindow.setSize(new LogicalSize(previousSize.width, 57));
-      // Lock max height to 57px so Windows cannot bounce it back
-      await appWindow.setMaxSize(new LogicalSize(9999, 57));
+      // 2. Shrink OS window instantly
+      await appWindow.setMinSize(new LogicalSize(356, 50));
+      await appWindow.setSize(new LogicalSize(previousSize.width, 50));
+      await appWindow.setMaxSize(new LogicalSize(9999, 50));
     } else {
-      // Remove max height constraint by setting it to a very large value instead of null
+      // 1. Prepare to expand: remove max constraints first
       await appWindow.setMaxSize(new LogicalSize(9999, 9999));
-      // Get the current width of the window (in case they resized it while collapsed)
-      const size = await appWindow.innerSize();
-      const scale = await appWindow.scaleFactor();
-      const currentWidth = size.width / scale;
       
-      // If the width drifted by just a few pixels, ignore the drift to prevent creeping
-      const widthToRestore = Math.abs(currentWidth - previousSize.width) < 5 
-        ? previousSize.width 
-        : currentWidth;
-        
-      // Restore previous size (ensure it is at least 249px tall, 240 + 9)
+      const widthToRestore = previousSize.width;
       const targetHeight = Math.max(249, previousSize.height);
+      
+      isCollapsed = false;
+
+      // 2. Expand OS window instantly
       await appWindow.setSize(new LogicalSize(widthToRestore, targetHeight));
-      // Restore normal min size
       await appWindow.setMinSize(new LogicalSize(356, 249));
     }
   }
@@ -403,11 +483,15 @@ function sayHi() {
   }
 </script>
 
-<svelte:window onblur={handleWindowBlur} onfocus={handleWindowFocus} />
+<svelte:window onblur={handleWindowBlur} onfocus={handleWindowFocus} onpointerdown={handleWindowPointerDown} />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <main class="app-container" onpointerdown={startDragging}>
-  <div class="glass-widget" class:collapsed={isCollapsed} style="background: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'}; transition: background-color 0.5s ease;">
+  <div 
+    class="glass-widget" 
+    class:collapsed={isCollapsed} 
+    style="background-color: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'}; transition: background-color 0.3s ease; height: 100%;"
+  >
 
     <!-- Main inner column: Title + Editor + Timer -->
     <div class="inner-column">
@@ -427,6 +511,7 @@ function sayHi() {
                 onkeydown={handleTitleKeyDown}
                 onblur={saveTitle}
                 use:focus
+                spellcheck="false"
               />
             </div>
           {:else}
@@ -492,14 +577,12 @@ function sayHi() {
           {/if}
         </div>
 
-        <!-- Timer row: aligned to right -->
-        <div class="timer-row">
-          <button class="timer-btn" aria-label="Timer">
-            <!-- lucide/timer icon -->
-            <svg class="tool-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12.8335 8.5332C12.8335 5.86383 10.6689 3.69922 7.99951 3.69922C5.33029 3.69939 3.1665 5.86393 3.1665 8.5332C3.16661 11.2024 5.33035 13.366 7.99951 13.3662C10.6688 13.3662 12.8334 11.2025 12.8335 8.5332ZM9.646 6.17969C9.84124 5.98445 10.1578 5.98449 10.353 6.17969C10.5483 6.37495 10.5483 6.69146 10.353 6.88672L8.35303 8.88672C8.15774 9.08172 7.84117 9.08189 7.646 8.88672C7.45089 8.69154 7.45102 8.37495 7.646 8.17969L9.646 6.17969ZM9.3335 0.833008C9.60949 0.833184 9.8335 1.05697 9.8335 1.33301C9.8335 1.60904 9.60949 1.83283 9.3335 1.83301H6.6665C6.39036 1.83301 6.1665 1.60915 6.1665 1.33301C6.1665 1.05687 6.39036 0.833008 6.6665 0.833008H9.3335ZM13.8335 8.5332C13.8334 11.7548 11.2211 14.3662 7.99951 14.3662C4.77807 14.366 2.16661 11.7547 7.99951 8.5332C2.1665 5.31165 4.778 2.69939 7.99951 2.69922C11.2212 2.69922 13.8335 5.31154 13.8335 8.5332Z" fill="currentColor"/>
-            </svg>
-          </button>
+        <!-- Editor Fade Overlay (Solid color with mask, transitions perfectly with glass-widget) -->
+        <div class="editor-fade-overlay" style="background-color: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'};"></div>
+
+        <!-- Timer row -->
+        <div class="timer-row delay-5">
+          <TimerWidget />
         </div>
       {/if}
     </div>
@@ -549,6 +632,69 @@ function sayHi() {
             </svg>
           </button>
         </div>
+
+        <!-- Theme Toggle Button (Below Close Dot) -->
+        <button 
+          class="tool-btn theme-toggle delay-5" 
+          class:drag-hover={hoveredToolAction === 'theme'} 
+          data-action="theme" 
+          onclick={toggleTheme} 
+          aria-label="Toggle Theme"
+          style="position: absolute; top: 80px; left: 12px; pointer-events: auto;"
+        >
+          {#if isDarkMode}
+            <svg class="tool-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          {:else}
+            <svg class="tool-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          {/if}
+        </button>
+
+        <!-- Accent Toggle Button -->
+        <button 
+          class="tool-btn accent-toggle delay-5" 
+          class:drag-hover={hoveredToolAction === 'accent'} 
+          data-action="accent" 
+          onclick={(e) => { e.stopPropagation(); toggleAccentMenu(); }} 
+          aria-label="Change Accent Color"
+          style="position: absolute; top: 120px; left: 12px; pointer-events: auto;"
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M10.0002 16.6668C8.23205 16.6668 6.53636 15.9645 5.28612 14.7142C4.03587 13.464 3.3335 11.7683 3.3335 10.0002C3.3335 8.23205 4.03587 6.53636 5.28612 5.28612C6.53636 4.03587 8.23205 3.3335 10.0002 3.3335C11.7683 3.3335 13.464 3.96564 14.7142 5.09086C15.9645 6.21607 16.6668 7.7422 16.6668 9.3335C16.6668 10.2176 16.3156 11.0654 15.6905 11.6905C15.0654 12.3156 14.2176 12.6668 13.3335 12.6668H11.8335C11.6168 12.6668 11.4044 12.7272 11.2201 12.8411C11.0358 12.955 10.8869 13.118 10.79 13.3117C10.6931 13.5055 10.6521 13.7225 10.6715 13.9383C10.691 14.1541 10.7702 14.3602 10.9002 14.5335L11.1002 14.8002C11.2302 14.9735 11.3093 15.1796 11.3288 15.3954C11.3482 15.6112 11.3072 15.8281 11.2103 16.0219C11.1134 16.2157 10.9645 16.3787 10.7802 16.4926C10.5959 16.6065 10.3835 16.6668 10.1668 16.6668H10.0002ZM7.50024 8C8.05253 8 8.50024 7.55228 8.50024 7C8.50024 6.44771 8.05253 6 7.50024 6C6.94796 6 6.50024 6.44771 6.50024 7C6.50024 7.55228 6.94796 8 7.50024 8ZM11.1578 7.09953C11.7124 7.09953 12.1621 6.64987 12.1621 6.09518C12.1621 5.54048 11.7124 5.09082 11.1578 5.09082C10.6031 5.09082 10.1534 5.54048 10.1534 6.09518C10.1534 6.64987 10.6031 7.09953 11.1578 7.09953ZM14.7142 8.5C14.7142 8.96028 14.3411 9.33341 13.8808 9.33341C13.4205 9.33341 13.0474 8.96028 13.0474 8.5C13.0474 8.03972 13.4205 7.66659 13.8808 7.66659C14.3411 7.66659 14.7142 8.03972 14.7142 8.5ZM6.11949 11.1419C6.57975 11.1419 6.95287 10.7687 6.95287 10.3085C6.95287 9.84822 6.57975 9.4751 6.11949 9.4751C5.65923 9.4751 5.28612 9.84822 5.28612 10.3085C5.28612 10.7687 5.65923 11.1419 6.11949 11.1419Z" fill="currentColor"/>
+          </svg>
+        </button>
+
+        <!-- Accent Menu Bubble -->
+        {#if isAccentMenuOpen}
+          <div class="accent-menu" transition:fade={{ duration: 150 }}>
+            {#each accentColors as color}
+              <button 
+                class="accent-color-btn" 
+                style="background-color: {color.hex};" 
+                class:active={currentAccent.hex === color.hex}
+                onclick={(e) => selectAccentColor(e, color)}
+                aria-label={color.name}
+              >
+                {#if currentAccent.hex === color.hex}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -607,7 +753,7 @@ function sayHi() {
     gap: 12px;
     min-width: 1px;
     position: relative;
-    justify-content: center;
+    justify-content: flex-start;
   }
 
   // ── Title Section ──
@@ -616,17 +762,15 @@ function sayHi() {
     flex-direction: column;
     gap: 6px;
     height: 24px;
-    opacity: 0.7;
     overflow: hidden;
     flex-shrink: 0;
     width: 100%;
     cursor: default;
     user-select: none;
-    transition: opacity 0.2s ease, height 0.2s ease;
+    transition: height 0.2s ease;
 
     &.expanded {
       height: auto;
-      opacity: 1;
     }
   }
 
@@ -634,18 +778,12 @@ function sayHi() {
     display: flex;
     align-items: center;
     gap: 4px;
-    opacity: 0.6;
     padding-left: 32px;
     padding-right: 4px;
     flex-shrink: 0;
     width: 100%;
     min-width: 0;
     overflow: hidden;
-    transition: opacity 0.2s ease;
-
-    &:hover {
-      opacity: 1;
-    }
   }
 
   .title-icon-btn {
@@ -692,7 +830,7 @@ function sayHi() {
     font-size: 12px;
     font-weight: 400;
     line-height: 1.2;
-    color: #111;
+    color: var(--color-text, #111);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -703,7 +841,7 @@ function sayHi() {
     font-size: 12px;
     font-weight: 400;
     line-height: 1.2;
-    color: #111;
+    color: var(--color-text, #111);
     background: transparent;
     border: none;
     border-bottom: 1px dashed $color-accent;
@@ -720,7 +858,7 @@ function sayHi() {
   // ── Dropdown Menu ──
   .dropdown-divider {
     height: 1px;
-    background-color: rgba(0, 0, 0, 0.1);
+    background-color: var(--dropdown-divider-bg, rgba(0, 0, 0, 0.1));
     margin: 0;
     width: 100%;
   }
@@ -776,7 +914,7 @@ function sayHi() {
     font-size: 12px;
     font-weight: 400;
     line-height: 1.2;
-    color: #111;
+    color: var(--color-text, #111);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -789,7 +927,7 @@ function sayHi() {
     position: absolute;
     top: 19px;
     left: 19px;
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: var(--close-dot-bg, rgba(0, 0, 0, 0.3));
     border-radius: 50%;
     border: none;
     padding: 0;
@@ -802,7 +940,7 @@ function sayHi() {
     }
     
     &.active {
-      background: rgba(0, 0, 0, 0.3);
+      background: var(--close-dot-active-bg, rgba(0, 0, 0, 0.3));
     }
 
     &:active {
@@ -810,13 +948,16 @@ function sayHi() {
     }
   }
 
-  // ── Overlay Menu ──
   .menu-overlay {
     position: absolute;
     inset: -1px;
     z-index: 10;
     border-radius: 12px;
-    background: linear-gradient(180deg, #FFFFFF 9.14%, rgba(255, 255, 255, 0) 100%);
+    background-color: var(--bg-focused);
+    background-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    mask-image: linear-gradient(180deg, black 15%, rgba(0, 0, 0, 0.4) 80%);
+    -webkit-mask-image: linear-gradient(180deg, black 15%, rgba(0, 0, 0, 0.4) 80%);
     pointer-events: none; // let clicks pass through background
     animation: fade-in 0.2s ease-out forwards;
   }
@@ -854,7 +995,7 @@ function sayHi() {
     
     &:hover, &.drag-hover {
       background: $color-accent; 
-      color: #fff;
+      color: var(--color-accent-text, #ffffff);
       opacity: 1 !important;
     }
     
@@ -866,7 +1007,7 @@ function sayHi() {
 
     &.active-tool:hover, &.active-tool.drag-hover {
       background: $color-accent; 
-      color: #fff;
+      color: var(--color-accent-text, #ffffff);
       opacity: 1 !important;
     }
     
@@ -896,6 +1037,60 @@ function sayHi() {
     }
   }
 
+  @keyframes slide-down-full {
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .accent-toggle {
+    color: var(--color-accent);
+    animation-name: slide-down-full;
+    
+    &:hover, &.drag-hover {
+      color: var(--color-accent-text, #ffffff) !important;
+    }
+  }
+
+  // ── Accent Menu ──
+  .accent-menu {
+    position: absolute;
+    top: 114px;
+    left: 52px;
+    background: var(--bg-focused);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 12px;
+    padding: 10px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    pointer-events: auto;
+    z-index: 30;
+  }
+
+  .accent-color-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease, outline 0.2s ease;
+    
+    &:hover {
+      transform: scale(1.1);
+    }
+    
+    &.active {
+      outline: 2px solid var(--color-text);
+      outline-offset: 2px;
+    }
+  }
+
   // ── Text Editor ──
   .text-editor {
     display: flex;
@@ -914,6 +1109,19 @@ function sayHi() {
     }
   }
 
+  .editor-fade-overlay {
+    position: absolute;
+    bottom: 44px; // 32px (timer widget) + 12px (gap)
+    left: 0;
+    width: 100%;
+    height: 48px;
+    pointer-events: none;
+    z-index: 5;
+    mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
+    transition: background-color 0.3s ease;
+  }
+
   .editor-content {
     display: flex;
     flex-direction: column;
@@ -921,7 +1129,7 @@ function sayHi() {
     padding: 0 8px;
     width: 100%;
     font-size: 14px;
-    color: black;
+    color: var(--color-text, black);
     word-break: break-word;
   }
 
@@ -930,7 +1138,7 @@ function sayHi() {
     font-size: 14px;
     font-weight: 600;
     line-height: 1.2;
-    color: black;
+    color: var(--color-text, black);
     margin: 0;
     min-width: 100%;
   }
@@ -940,7 +1148,7 @@ function sayHi() {
     font-size: 14px;
     font-weight: 400;
     line-height: 1.2;
-    color: black;
+    color: var(--color-text, black);
     margin: 0;
     min-width: 100%;
   }

@@ -122,9 +122,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.95);
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -166,7 +164,6 @@
       max-height: 90vh;
       object-fit: contain;
       border-radius: 8px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
       pointer-events: none; /* Let container handle drag */
     }
   }
@@ -181,7 +178,6 @@
     padding: 6px 16px;
     border-radius: 20px;
     font-size: 14px;
-    backdrop-filter: blur(4px);
     pointer-events: none;
   }
 </style>

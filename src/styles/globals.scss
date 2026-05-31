@@ -121,10 +121,36 @@
 :root {
   --bg-focused: rgb(255, 255, 255);
   --bg-unfocused: #ececec;
+  --color-bg: transparent;
+  --color-text: #131313;
+  --color-text-muted: #4b4b4b;
+  --glass-bg-base: rgba(255, 255, 255, 0.42);
+  --glass-border: rgba(255, 255, 255, 0.45);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.17);
+  --close-dot-bg: rgba(0, 0, 0, 0.3);
+  --close-dot-active-bg: rgba(0, 0, 0, 0.5);
+  --dropdown-divider-bg: rgba(0, 0, 0, 0.1);
+  --dropdown-item-hover: rgba(0, 0, 0, 0.05);
+}
+
+:root[data-theme="dark"] {
+  --bg-focused: rgb(24, 24, 24);
+  --bg-unfocused: #111111;
+  --color-bg: transparent;
+  --color-text: #e0e0e0;
+  --color-text-muted: #a0a0a0;
+  --glass-bg-base: rgba(0, 0, 0, 0.42);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --close-dot-bg: rgba(255, 255, 255, 0.3);
+  --close-dot-active-bg: rgba(255, 255, 255, 0.5);
+  --dropdown-divider-bg: rgba(255, 255, 255, 0.1);
+  --dropdown-item-hover: rgba(255, 255, 255, 0.05);
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, opacity 0.3s ease;
 }
 
 
@@ -135,7 +161,7 @@ html, body {
   height: 100vh;
   font-family: $font-family-base;
   font-size: $font-size-base;
-  color: $color-text;
+  color: var(--color-text, $color-text);
   // Make background transparent for Tauri transparent window
   background-color: transparent !important;
   overflow: hidden;
@@ -169,7 +195,7 @@ button, a, input, textarea {
   }
   
   &:focus-visible {
-    outline: 2px solid rgba($color-accent, 0.35);
+    outline: 2px solid color-mix(in srgb, $color-accent 35%, transparent);
     outline-offset: 1px;
   }
 }
