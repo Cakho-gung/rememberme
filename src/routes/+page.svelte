@@ -5,7 +5,7 @@
   import Editor from '$lib/components/Editor.svelte';
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
-  import { loadNotes, saveNotes, type Note } from '$lib/db';
+  import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, type Note } from '$lib/db';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -67,7 +67,8 @@
     }];
     activeNoteId = newId;
     isMenuOpen = false;
-    scheduleSave();
+    scheduleSaveIndex();
+    scheduleSaveContent(newId, '<p></p>');
     editTitle();
   }
 
@@ -82,7 +83,7 @@
     const note = mockNotes.find(n => n.id === activeNoteId);
     if (note && titleEditValue.trim() !== '') {
       note.title = titleEditValue;
-      scheduleSave();
+      scheduleSaveIndex();
     }
     isEditingTitle = false;
   }
@@ -99,11 +100,11 @@
     const note = mockNotes.find(n => n.id === activeNoteId);
     if (note) {
       note.archived = true;
-      scheduleSave();
+      scheduleSaveIndex();
       // Select next unarchived
       const nextUnarchived = mockNotes.find(n => !n.archived);
       if (nextUnarchived) {
-        activeNoteId = nextUnarchived.id;
+        selectNote(nextUnarchived.id);
       }
     }
     isMenuOpen = false;
@@ -114,13 +115,44 @@
     const note = mockNotes.find(n => n.id === id);
     if (note) {
       note.archived = true;
-      scheduleSave();
+      scheduleSaveIndex();
     }
   }
 
   // -- Interaction State --
   let isCollapsed = $state(false);
   let isDropdownOpen = $state(false);
+  let isTrashOpen = $state(false);
+
+  function openTrash() {
+    isTrashOpen = true;
+    isMenuOpen = false;
+  }
+
+  function closeTrash() {
+    isTrashOpen = false;
+  }
+
+  function restoreNote(id: number) {
+    const note = mockNotes.find(n => n.id === id);
+    if (note) {
+      note.archived = false;
+      scheduleSaveIndex();
+      if (!activeNote) {
+        selectNote(note.id);
+      }
+    }
+  }
+
+  function permanentlyDeleteNote(id: number) {
+    mockNotes = mockNotes.filter(n => n.id !== id);
+    scheduleSaveIndex();
+    deleteNoteData(id);
+    if (activeNoteId === id) {
+      const next = mockNotes.find(n => !n.archived);
+      if (next) selectNote(next.id);
+    }
+  }
 
   // -- Drag to Select Tool State --
   let isDotDragging = $state(false);
@@ -171,7 +203,7 @@
     const target = e.target as HTMLElement;
     
     if (isMenuOpen) {
-      if (!target.closest('.close-dot') && !target.closest('.toolbar') && !target.closest('.theme-toggle') && !target.closest('.accent-toggle') && !target.closest('.accent-menu')) {
+      if (!target.closest('.close-dot') && !target.closest('.toolbar') && !target.closest('.theme-toggle') && !target.closest('.accent-toggle') && !target.closest('.settings-toggle') && !target.closest('.accent-menu')) {
         isMenuOpen = false;
         isAccentMenuOpen = false;
       }
@@ -242,6 +274,7 @@
         else if (action === 'archive') archiveNote();
         else if (action === 'pin') togglePin();
         else if (action === 'settings') handleSettings();
+        else if (action === 'trash') openTrash();
         else if (action === 'exit') closeApp();
         else if (action === 'theme') toggleTheme();
         else if (action === 'accent') toggleAccentMenu();
@@ -310,12 +343,20 @@
   let isLoading = $state(true);
   let mockNotes = $state<Note[]>([]);
   let activeNoteId = $state(0);
-  let saveTimeout: ReturnType<typeof setTimeout>;
+  let saveIndexTimeout: ReturnType<typeof setTimeout>;
+  let saveContentTimeout: ReturnType<typeof setTimeout>;
 
-  function scheduleSave() {
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      saveNotes(mockNotes);
+  function scheduleSaveIndex() {
+    clearTimeout(saveIndexTimeout);
+    saveIndexTimeout = setTimeout(() => {
+      saveIndex(mockNotes);
+    }, 500);
+  }
+
+  function scheduleSaveContent(id: number, content: any) {
+    clearTimeout(saveContentTimeout);
+    saveContentTimeout = setTimeout(() => {
+      saveNoteContent(id, content);
     }, 500);
   }
 
@@ -344,7 +385,12 @@
       mockNotes = notes;
       // Select the first non-archived note
       const first = mockNotes.find(n => !n.archived);
-      if (first) activeNoteId = first.id;
+      if (first) {
+        activeNoteId = first.id;
+        if (first.content === null) {
+          first.content = await loadNoteContent(first.id);
+        }
+      }
     } else {
       mockNotes = [{
         id: 1,
@@ -353,51 +399,69 @@
         content: `<h1>Welcome to RememberMe! 🚀</h1>
 <p>Here is a guide to all the syntaxes and features supported in this editor:</p>
 <hr>
-<h3>1. Slash Commands</h3>
-<p>Type <code>/</code> on a new line to open the slash menu. You can quickly insert Headings, Lists, Tables, Code Blocks, and more.</p>
+
+<h3>1. Slash Commands (/)</h3>
+<p>Type <code>/</code> on a new line to open the powerful slash menu. It lets you quickly insert Headings, Lists, Tables, Call outs, Timers, and more.</p>
+
 <h3>2. Text Formatting</h3>
 <ul>
   <li><strong>Bold</strong>: <code>**text**</code> or <kbd>Ctrl</kbd> + <kbd>B</kbd></li>
   <li><em>Italic</em>: <code>*text*</code> or <kbd>Ctrl</kbd> + <kbd>I</kbd></li>
   <li><s>Strikethrough</s>: <code>~~text~~</code></li>
   <li><code>Inline Code</code>: <code>\`text\`</code></li>
-  <li>Color Highlight: Select text and click the pink dot in the popup menu.</li>
+  <li>Color Highlight: Select text and pick a color from the popup menu! <span style="background-color: #ffd8d9; color: #cc0000; padding: 2px 4px; border-radius: 4px;">Like this</span></li>
 </ul>
-<h3>3. Lists & Tasks</h3>
-<ul>
-  <li><strong>Bullet List</strong>: Type <code>*</code> or <code>-</code> followed by a space.</li>
-  <li><strong>Numbered List</strong>: Type <code>1.</code> followed by a space.</li>
-  <li><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><strong>Task List</strong>: Type <code>[ ]</code> followed by a space.</li><li data-type="taskItem" data-checked="true">Checked task!</li></ul></li>
+
+<h3>3. Emoji Support 🥳</h3>
+<p>Type <code>:</code> to open the full Emoji Picker, or use common shortcuts like <code>&lt;3</code> (❤️) and <code>:D</code> (😃). The emoji menu supports full fallback images for older OS versions!</p>
+
+<h3>4. Call Out (Collapsible Details)</h3>
+<p>Use <code>/call</code> to insert a sleek, Notion-style collapsible block. It defaults to expanded so you can easily type the title and content.</p>
+<details data-type="details" open><summary>Try clicking me to collapse!</summary><div data-type="detailsContent"><p>This content is hidden when collapsed.</p></div></details>
+
+<h3>5. Smart Lists & Checklists</h3>
+<p>Bullet lists (<code>* </code>), Numbered lists (<code>1. </code>), and Task lists (<code>[ ] </code>) are all supported. Numbered lists automatically feature multi-level numbering (e.g. 1.1, 1.2.1) when nested!</p>
+<ul data-type="taskList">
+  <li data-type="taskItem" data-checked="false"><label><input type="checkbox"></label><div><p>Plan the next feature</p></div></li>
+  <li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked></label><div><p>Build the rich text editor</p></div></li>
 </ul>
-<h3>4. Blocks</h3>
-<blockquote><p><strong>Blockquote</strong>: Type <code>&gt;</code> followed by a space.</p></blockquote>
-<pre><code class="language-javascript">// Code Block: Type \`\`\` (3 backticks) and press Space or Enter
-function sayHi() {
-  console.log("Hello!");
-}</code></pre>
-<h3>5. Tables</h3>
-<p>Use the Slash command <code>/table</code> to insert a table. Click inside the table to reveal the popup menu to add/remove rows and columns.</p>
-<h3>6. Images</h3>
-<p>You can <strong>Copy &amp; Paste</strong> images directly into the editor! Click an image to resize it or float it left/right using the popup menu.</p>
-<h3>7. Links & Mentions</h3>
-<p>Select text and click the 🔗 icon in the popup to add a link. Type <code>@</code> to open the mention menu.</p>
-<h3>8. Math Equations</h3>
-<p>Type <code>$E=mc^2$</code> to write inline math, or <code>$$</code> for block equations.</p>
-<h3>9. Smart Typography</h3>
-<p>Special characters are automatically formatted! Try typing <code>(c)</code>, <code>(r)</code>, <code>(tm)</code>, <code>-&gt;</code>, or <code>--</code>.</p>
+
+<h3>6. Focus Timer</h3>
+<p>Type <code>/timer</code> to insert a Focus Timer directly into your notes! You can choose duration (10m, 15m, 25m, 30m, 60m) and start working immediately.</p>
+<div data-type="timer"></div>
+
+<h3>7. Code & Blockquotes</h3>
+<blockquote><p><strong>Blockquote</strong>: Type <code>&gt; </code> followed by a space.</p></blockquote>
+<pre><code class="language-javascript">// Code Block: Type \`\`\` and press Space
+const greet = () => console.log("Hello RememberMe!");</code></pre>
+
+<h3>8. Images & Tables</h3>
+<p><strong>Images</strong>: Copy &amp; Paste any image into the editor. Click the image to reveal a popup menu to resize or align (Left, Center, Right, Full Width).</p>
+<p><strong>Tables</strong>: Type <code>/table</code>. Click inside to easily add or delete rows and columns.</p>
+
+<h3>9. Links & Mentions</h3>
+<p>Auto-links URLs on paste, or select text and click 🔗. Type <code>@</code> to open the mentions menu and tag users dynamically.</p>
+
+<h3>10. Smart Typography & Math</h3>
+<p>Type <code>(c)</code> for ©, <code>-&gt;</code> for →. Type <code>$E=mc^2$</code> for inline math or <code>$$</code> for block equations.</p>
 `
       }];
       activeNoteId = 1;
-      await saveNotes(mockNotes);
+      await saveIndex(mockNotes);
+      await saveNoteContent(1, mockNotes[0].content);
     }
     isLoading = false;
   });
 
   let activeNote = $derived(mockNotes.find(n => n.id === activeNoteId && !n.archived) || mockNotes.find(n => !n.archived));
 
-  function selectNote(id: number) {
+  async function selectNote(id: number) {
     activeNoteId = id;
     isDropdownOpen = false;
+    const note = mockNotes.find(n => n.id === id);
+    if (note && note.content === null) {
+      note.content = await loadNoteContent(id);
+    }
   }
 
   // Smart Drag vs Click handling
@@ -563,14 +627,38 @@ function sayHi() {
       {#if !isCollapsed}
         <!-- Text editor area -->
         <div class="text-editor">
-          {#if !isLoading && activeNote}
+          {#if isTrashOpen}
+            <div class="trash-view" transition:fade={{ duration: 150 }}>
+              <div class="trash-header">
+                <h3>Thùng rác</h3>
+                <button class="close-trash-btn" onclick={closeTrash}>
+                   <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M11.6464 3.64645C11.8417 3.45118 12.1582 3.45118 12.3535 3.64645C12.5487 3.84171 12.5487 4.15822 12.3535 4.35348L8.70699 7.99996L12.3535 11.6464C12.5487 11.8417 12.5487 12.1582 12.3535 12.3535C12.1582 12.5487 11.8417 12.5487 11.6464 12.3535L7.99996 8.70699L4.35348 12.3535C4.15822 12.5487 3.84171 12.5487 3.64645 12.3535C3.45118 12.1582 3.45118 11.8417 3.64645 11.6464L7.29293 7.99996L3.64645 4.35348C3.45118 4.15822 3.45118 3.84171 3.64645 3.64645C3.84171 3.45118 4.15822 3.45118 4.35348 3.64645L7.99996 7.29293L11.6464 3.64645Z"/>
+                   </svg>
+                </button>
+              </div>
+              <div class="trash-list">
+                {#each mockNotes.filter(n => n.archived) as note}
+                  <div class="trash-item">
+                    <span class="trash-item-title">{note.title}</span>
+                    <div class="trash-item-actions">
+                      <button class="restore-btn" onclick={() => restoreNote(note.id)}>Khôi phục</button>
+                      <button class="delete-btn" onclick={() => permanentlyDeleteNote(note.id)}>Xóa</button>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="empty-trash">Thùng rác trống</div>
+                {/each}
+              </div>
+            </div>
+          {:else if !isLoading && activeNote && activeNote.content !== null}
             <Editor 
               noteId={activeNote.id}
               content={activeNote.content}
               onUpdate={(content) => {
                 if (activeNote) {
                   activeNote.content = content;
-                  scheduleSave();
+                  scheduleSaveContent(activeNote.id, content);
                 }
               }} 
             />
@@ -621,9 +709,9 @@ function sayHi() {
               </svg>
             {/if}
           </button>
-          <button class="tool-btn delay-1" class:drag-hover={hoveredToolAction === 'settings'} data-action="settings" onclick={handleSettings} aria-label="Settings">
+          <button class="tool-btn delay-1" class:drag-hover={hoveredToolAction === 'trash'} data-action="trash" onclick={openTrash} aria-label="Trash">
             <svg class="tool-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M2.83301 14V9.83301H2C1.72386 9.83301 1.5 9.60915 1.5 9.33301C1.50018 9.05702 1.72397 8.83301 2 8.83301H4.66699C4.94288 8.83318 5.16682 9.05712 5.16699 9.33301C5.16699 9.60904 4.94298 9.83283 4.66699 9.83301H3.83301V14C3.83301 14.2761 3.60915 14.5 3.33301 14.5C3.05702 14.4998 2.83301 14.276 2.83301 14ZM7.5 14V8C7.5 7.72386 7.72386 7.5 8 7.5C8.27614 7.5 8.5 7.72386 8.5 8V14C8.5 14.2761 8.27614 14.5 8 14.5C7.72386 14.5 7.5 14.2761 7.5 14ZM12.167 14V11.167H11.333C11.0571 11.1668 10.8332 10.9429 10.833 10.667C10.833 10.391 11.057 10.1672 11.333 10.167H14C14.2761 10.167 14.5 10.3908 14.5 10.667C14.4998 10.943 14.276 11.167 14 11.167H13.167V14C13.167 14.276 12.943 14.4998 12.667 14.5C12.3908 14.5 12.167 14.2761 12.167 14ZM12.167 8V2C12.167 1.72386 12.3908 1.5 12.667 1.5C12.943 1.50018 13.167 1.72397 13.167 2V8C13.167 8.27603 12.943 8.49982 12.667 8.5C12.3908 8.5 12.167 8.27614 12.167 8ZM2.83301 6.66699V2C2.83301 1.72397 3.05702 1.50018 3.33301 1.5C3.60915 1.5 3.83301 1.72386 3.83301 2V6.66699C3.83283 6.94298 3.60904 7.16699 3.33301 7.16699C3.05712 7.16682 2.83318 6.94288 2.83301 6.66699ZM7.5 2C7.5 1.72386 7.72386 1.5 8 1.5C8.27614 1.5 8.5 1.72386 8.5 2V4.83301H9.33301C9.60904 4.83301 9.83283 5.05702 9.83301 5.33301C9.83301 5.60915 9.60915 5.83301 9.33301 5.83301H6.66699C6.39085 5.83301 6.16699 5.60915 6.16699 5.33301C6.16717 5.05702 6.39096 4.83301 6.66699 4.83301H7.5V2Z" fill="currentColor"/>
+              <path d="M12.167 4.50049H3.83301V13.3335C3.83301 13.5544 3.92107 13.7661 4.07715 13.9224C4.23343 14.0786 4.44598 14.1665 4.66699 14.1665H11.333C11.554 14.1665 11.7666 14.0786 11.9229 13.9224C12.0789 13.7661 12.167 13.5544 12.167 13.3335V4.50049ZM6.16699 11.3335V7.3335C6.16699 7.05735 6.39085 6.8335 6.66699 6.8335C6.94299 6.83367 7.16699 7.05746 7.16699 7.3335V11.3335C7.16699 11.6095 6.94299 11.8333 6.66699 11.8335C6.39085 11.8335 6.16699 11.6096 6.16699 11.3335ZM8.83301 11.3335V7.3335C8.83301 7.05746 9.05701 6.83367 9.33301 6.8335C9.60915 6.8335 9.83301 7.05735 9.83301 7.3335V11.3335C9.83301 11.6096 9.60915 11.8335 9.33301 11.8335C9.05701 11.8333 8.83301 11.6095 8.83301 11.3335ZM10.167 2.6665C10.1669 2.44569 10.079 2.23383 9.92285 2.07764C9.76657 1.92136 9.55402 1.8335 9.33301 1.8335H6.66699C6.44598 1.8335 6.23343 1.92136 6.07715 2.07764C5.92105 2.23382 5.83309 2.44568 5.83301 2.6665V3.50049H10.167V2.6665ZM11.167 3.50049H14C14.2761 3.50049 14.5 3.72435 14.5 4.00049C14.4998 4.27648 14.276 4.50049 14 4.50049H13.167V13.3335C13.167 13.8196 12.9735 14.2856 12.6299 14.6294C12.2861 14.9732 11.8192 15.1665 11.333 15.1665H4.66699C4.18076 15.1665 3.71393 14.9732 3.37012 14.6294C3.0265 14.2856 2.83301 13.8196 2.83301 13.3335V4.50049H2C1.72397 4.50049 1.50018 4.27648 1.5 4.00049C1.5 3.72435 1.72386 3.50049 2 3.50049H4.83301V2.6665C4.83309 2.18047 5.02648 1.71433 5.37012 1.37061C5.71393 1.02679 6.18076 0.833496 6.66699 0.833496H9.33301C9.81924 0.833496 10.2861 1.02679 10.6299 1.37061C10.9735 1.71433 11.1669 2.18047 11.167 2.6665V3.50049Z" fill="currentColor"/>
             </svg>
           </button>
           <button class="tool-btn delay-0" class:drag-hover={hoveredToolAction === 'exit'} id="exit-btn" data-action="exit" onclick={closeApp} aria-label="Close">
@@ -672,6 +760,20 @@ function sayHi() {
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
             <path fill-rule="evenodd" clip-rule="evenodd" d="M10.0002 16.6668C8.23205 16.6668 6.53636 15.9645 5.28612 14.7142C4.03587 13.464 3.3335 11.7683 3.3335 10.0002C3.3335 8.23205 4.03587 6.53636 5.28612 5.28612C6.53636 4.03587 8.23205 3.3335 10.0002 3.3335C11.7683 3.3335 13.464 3.96564 14.7142 5.09086C15.9645 6.21607 16.6668 7.7422 16.6668 9.3335C16.6668 10.2176 16.3156 11.0654 15.6905 11.6905C15.0654 12.3156 14.2176 12.6668 13.3335 12.6668H11.8335C11.6168 12.6668 11.4044 12.7272 11.2201 12.8411C11.0358 12.955 10.8869 13.118 10.79 13.3117C10.6931 13.5055 10.6521 13.7225 10.6715 13.9383C10.691 14.1541 10.7702 14.3602 10.9002 14.5335L11.1002 14.8002C11.2302 14.9735 11.3093 15.1796 11.3288 15.3954C11.3482 15.6112 11.3072 15.8281 11.2103 16.0219C11.1134 16.2157 10.9645 16.3787 10.7802 16.4926C10.5959 16.6065 10.3835 16.6668 10.1668 16.6668H10.0002ZM7.50024 8C8.05253 8 8.50024 7.55228 8.50024 7C8.50024 6.44771 8.05253 6 7.50024 6C6.94796 6 6.50024 6.44771 6.50024 7C6.50024 7.55228 6.94796 8 7.50024 8ZM11.1578 7.09953C11.7124 7.09953 12.1621 6.64987 12.1621 6.09518C12.1621 5.54048 11.7124 5.09082 11.1578 5.09082C10.6031 5.09082 10.1534 5.54048 10.1534 6.09518C10.1534 6.64987 10.6031 7.09953 11.1578 7.09953ZM14.7142 8.5C14.7142 8.96028 14.3411 9.33341 13.8808 9.33341C13.4205 9.33341 13.0474 8.96028 13.0474 8.5C13.0474 8.03972 13.4205 7.66659 13.8808 7.66659C14.3411 7.66659 14.7142 8.03972 14.7142 8.5ZM6.11949 11.1419C6.57975 11.1419 6.95287 10.7687 6.95287 10.3085C6.95287 9.84822 6.57975 9.4751 6.11949 9.4751C5.65923 9.4751 5.28612 9.84822 5.28612 10.3085C5.28612 10.7687 5.65923 11.1419 6.11949 11.1419Z" fill="currentColor"/>
+          </svg>
+        </button>
+
+        <!-- Settings Toggle Button (Below Accent Toggle) -->
+        <button 
+          class="tool-btn settings-toggle delay-5" 
+          class:drag-hover={hoveredToolAction === 'settings'} 
+          data-action="settings" 
+          onclick={handleSettings} 
+          aria-label="Settings"
+          style="position: absolute; top: 160px; left: 12px; pointer-events: auto;"
+        >
+          <svg class="tool-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.83301 14V9.83301H2C1.72386 9.83301 1.5 9.60915 1.5 9.33301C1.50018 9.05702 1.72397 8.83301 2 8.83301H4.66699C4.94288 8.83318 5.16682 9.05712 5.16699 9.33301C5.16699 9.60904 4.94298 9.83283 4.66699 9.83301H3.83301V14C3.83301 14.2761 3.60915 14.5 3.33301 14.5C3.05702 14.4998 2.83301 14.276 2.83301 14ZM7.5 14V8C7.5 7.72386 7.72386 7.5 8 7.5C8.27614 7.5 8.5 7.72386 8.5 8V14C8.5 14.2761 8.27614 14.5 8 14.5C7.72386 14.5 7.5 14.2761 7.5 14ZM12.167 14V11.167H11.333C11.0571 11.1668 10.8332 10.9429 10.833 10.667C10.833 10.391 11.057 10.1672 11.333 10.167H14C14.2761 10.167 14.5 10.3908 14.5 10.667C14.4998 10.943 14.276 11.167 14 11.167H13.167V14C13.167 14.276 12.943 14.4998 12.667 14.5C12.3908 14.5 12.167 14.2761 12.167 14ZM12.167 8V2C12.167 1.72386 12.3908 1.5 12.667 1.5C12.943 1.50018 13.167 1.72397 13.167 2V8C13.167 8.27603 12.943 8.49982 12.667 8.5C12.3908 8.5 12.167 8.27614 12.167 8ZM2.83301 6.66699V2C2.83301 1.72397 3.05702 1.50018 3.33301 1.5C3.60915 1.5 3.83301 1.72386 3.83301 2V6.66699C3.83283 6.94298 3.60904 7.16699 3.33301 7.16699C3.05712 7.16682 2.83318 6.94288 2.83301 6.66699ZM7.5 2C7.5 1.72386 7.72386 1.5 8 1.5C8.27614 1.5 8.5 1.72386 8.5 2V4.83301H9.33301C9.60904 4.83301 9.83283 5.05702 9.83301 5.33301C9.83301 5.60915 9.60915 5.83301 9.33301 5.83301H6.66699C6.39085 5.83301 6.16699 5.60915 6.16699 5.33301C6.16717 5.05702 6.39096 4.83301 6.66699 4.83301H7.5V2Z" fill="currentColor"/>
           </svg>
         </button>
 
@@ -727,6 +829,7 @@ function sayHi() {
     width: 100%;
     height: 100%;
     padding: 12px;
+    border-radius: 8px;
     position: relative;
     display: flex;
     align-items: flex-start;
@@ -1100,6 +1203,7 @@ function sayHi() {
     overflow-y: auto;
     overflow-x: hidden;
     width: 100%;
+    scroll-padding-bottom: 80px; /* Ensures auto-scroll during typing avoids the fade overlay */
     
     // Hide scrollbar but keep scroll functionality
     -ms-overflow-style: none;  /* IE and Edge */
@@ -1120,6 +1224,128 @@ function sayHi() {
     mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 100%);
     transition: background-color 0.3s ease;
+  }
+
+  // ── Trash View ──
+  .trash-view {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    padding: 0 16px 20px 16px;
+    box-sizing: border-box;
+    color: var(--color-text);
+  }
+
+  .trash-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    
+    h3 {
+      font-family: $font-family-base;
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+    }
+  }
+
+  .close-trash-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-text);
+    opacity: 0.5;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      opacity: 1;
+      background: var(--color-accent);
+      color: var(--color-accent-text);
+    }
+  }
+
+  .trash-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .trash-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(128, 128, 128, 0.1);
+    transition: background 0.2s ease;
+    
+    &:hover {
+      background: rgba(128, 128, 128, 0.15);
+    }
+  }
+
+  .trash-item-title {
+    font-family: $font-family-mono;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 12px;
+  }
+
+  .trash-item-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .restore-btn, .delete-btn {
+    font-family: $font-family-base;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .restore-btn {
+    background: rgba(56, 170, 87, 0.15);
+    color: #38AA57;
+    
+    &:hover {
+      background: #38AA57;
+      color: white;
+    }
+  }
+
+  .delete-btn {
+    background: rgba(243, 52, 58, 0.15);
+    color: #F3343A;
+    
+    &:hover {
+      background: #F3343A;
+      color: white;
+    }
+  }
+
+  .empty-trash {
+    font-family: $font-family-base;
+    font-size: 13px;
+    color: var(--color-text);
+    opacity: 0.5;
+    text-align: center;
+    padding-top: 24px;
   }
 
   .editor-content {

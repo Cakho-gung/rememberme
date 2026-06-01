@@ -29,7 +29,7 @@
 	max-width: 800px;
 	width: 100%;
 	margin: 0 auto;
-	padding-bottom: 2rem;
+	padding-bottom: 5rem; /* Increased to prevent text from being obscured by bottom gradient fade */
 	padding-top: 1rem;
 	padding-left: 8px;
 	padding-right: 8px;
@@ -231,8 +231,8 @@
 
 	/* Mention Tag */
 	.mention-tag {
-		background-color: rgba(49, 130, 206, 0.15);
-		color: #3182ce;
+		background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+		color: var(--color-accent);
 		border-radius: 4px;
 		padding: 2px 6px;
 		font-weight: 600;
@@ -243,7 +243,8 @@
 	/* Inline Code (Code Mark) */
 	p code, li code {
 		background-color: var(--dropdown-item-hover, rgba(0, 0, 0, 0.05));
-		color: var(--color-accent);
+		color: inherit;
+		font-weight: 600;
 		padding: 2px 6px;
 		border-radius: 4px;
 		font-family: 'JetBrains Mono', 'Fira Code', monospace;
@@ -264,7 +265,10 @@
 			> label {
 				flex: 0 0 auto;
 				margin-right: 8px;
-				margin-top: 3px; /* Căn chỉnh checkbox bằng line-height */
+				margin-top: 0;
+				height: 1.6em; /* Match p line-height */
+				display: flex;
+				align-items: center;
 				user-select: none;
 				
 				input[type="checkbox"] {
@@ -288,8 +292,8 @@
 		}
 	}
 
-	/* Standard Lists (Bullet & Ordered) */
-	ul:not([data-type="taskList"]), ol {
+	/* Standard Lists (Bullet) */
+	ul:not([data-type="taskList"]) {
 		padding-left: 1.5em;
 		margin-top: 0.5em;
 		margin-bottom: 0.5em;
@@ -297,6 +301,38 @@
 		li {
 			margin-bottom: 4px;
 			line-height: 1.6;
+		}
+	}
+
+	/* Multi-level Ordered Lists */
+	ol {
+		padding-left: 2em;
+		margin-top: 0.5em;
+		margin-bottom: 0.5em;
+		list-style-type: none;
+		counter-reset: custom-item;
+		
+		ol {
+			margin-top: 0.25em;
+			margin-bottom: 0.25em;
+		}
+		
+		li {
+			margin-bottom: 4px;
+			line-height: 1.6;
+			position: relative;
+			counter-increment: custom-item;
+
+			&::before {
+				content: counters(custom-item, ".") ". ";
+				position: absolute;
+				right: 100%;
+				margin-right: 0.5em;
+				white-space: nowrap;
+				font-variant-numeric: tabular-nums;
+				font-weight: 500;
+				opacity: 0.8;
+			}
 		}
 	}
 
@@ -445,5 +481,138 @@
 		border-radius: 2px;
 		margin-right: 0.25em;
 		vertical-align: -0.15em;
+	}
+
+	/* Emoji Extension */
+	span[data-type="emoji"] {
+		display: inline-block;
+		img {
+			width: 1.2em;
+			height: 1.2em;
+			vertical-align: middle;
+			margin: 0 0.1em;
+		}
+	}
+
+	/* Viewer: Details / Callout Extension */
+	details[data-type="details"] {
+		display: block;
+		margin: 0.5rem 0;
+
+		summary {
+			font-weight: 500;
+			cursor: pointer;
+			padding: 0.25rem 0 0.25rem 1.5rem;
+			outline: none;
+			list-style: none; /* Hide default marker */
+			position: relative;
+			min-height: 1.5rem;
+			
+			&::-webkit-details-marker {
+				display: none;
+			}
+			
+			&::marker {
+				display: none;
+			}
+
+			&::before {
+				content: "▶";
+				position: absolute;
+				left: 0;
+				top: 0.25rem;
+				width: 1.5rem;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				font-size: 0.75em;
+				transition: transform 0.2s ease;
+				color: var(--color-text-muted, rgba(0, 0, 0, 0.65));
+				line-height: 1.6;
+			}
+		}
+
+		&[open] summary::before {
+			transform: rotate(90deg);
+		}
+
+		> div[data-type="detailsContent"] {
+			padding: 0.25rem 0 0.25rem 1.5rem;
+			min-height: 1.5rem;
+			
+			> :first-child {
+				margin-top: 0;
+			}
+			
+			> :last-child {
+				margin-bottom: 0;
+			}
+		}
+	}
+
+	/* Editor: Details / Callout Extension (NodeView) */
+	div[data-type="details"] {
+		display: block;
+		margin: 0.5rem 0;
+		position: relative;
+
+		/* The toggle button created by Tiptap */
+		> button {
+			position: absolute;
+			left: 0;
+			top: 0.25rem;
+			width: 1.5rem;
+			height: 1.5rem;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			background: transparent;
+			border: none;
+			cursor: pointer;
+			color: var(--color-text-muted, rgba(0, 0, 0, 0.65));
+			padding: 0;
+			font-size: 0.75em;
+			transition: transform 0.2s ease;
+			z-index: 1;
+
+			&::before {
+				content: "▶";
+			}
+		}
+
+		&.is-open > button {
+			transform: rotate(90deg);
+		}
+
+		> div {
+			summary {
+				font-weight: 500;
+				padding: 0.25rem 0 0.25rem 1.5rem;
+				outline: none;
+				list-style: none;
+				min-height: 1.5rem;
+				display: block;
+				
+				&::-webkit-details-marker { display: none; }
+				&::marker { display: none; }
+			}
+
+			div[data-type="detailsContent"] {
+				padding: 0.25rem 0 0.25rem 1.5rem;
+				min-height: 1.5rem;
+				
+				> :first-child { margin-top: 0; }
+				> :last-child { margin-bottom: 0; }
+			}
+		}
+	}
+	
+	/* Empty Node Placeholder for generic nodes (e.g. detailsSummary) */
+	.is-empty::before {
+		content: attr(data-placeholder);
+		float: left;
+		color: var(--placeholder-color, rgba(150, 150, 150, 0.5));
+		pointer-events: none;
+		height: 0;
 	}
 }

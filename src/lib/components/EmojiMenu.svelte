@@ -2,6 +2,7 @@
 	interface EmojiItem {
 		name: string;
 		emoji: string;
+		fallbackImage?: string;
 	}
 
 	interface Props {
@@ -28,7 +29,11 @@
 						onmousedown={(e) => selectItem(e, item)}
 						onmouseenter={() => setSelectedIndex(index)}
 					>
-						<span class="emoji">{item.emoji}</span>
+						{#if item.fallbackImage}
+							<img src={item.fallbackImage} class="emoji-img" alt={item.name} />
+						{:else}
+							<span class="emoji">{item.emoji}</span>
+						{/if}
 						<span class="name">:{item.name}:</span>
 					</button>
 				</li>
@@ -90,6 +95,11 @@
 	}
 	.emoji {
 		font-size: 16px;
+	}
+	.emoji-img {
+		width: 16px;
+		height: 16px;
+		object-fit: contain;
 	}
 	.name {
 		color: #555;
