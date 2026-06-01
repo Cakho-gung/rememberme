@@ -40,6 +40,7 @@
 	import { ColorHighlighter } from './ColorHighlighter';
 	import { EmojiExtension } from './emojiExtension';
 	import { CustomImage } from './CustomImage';
+	import { GlobalShortcuts } from './shortcutsExtension';
 
 	interface Props {
 		noteId: number;
@@ -171,6 +172,7 @@
 				SlashCommands,
 				MentionExtension,
 				EmojiExtension,
+				GlobalShortcuts,
 				BubbleMenuExtension.configure({
 					element: bubbleMenuElement!,
 					options: {
@@ -482,6 +484,13 @@
 				</div>
 			{:else}
 				<div class="bubble-buttons" style="display: {showLinkInput ? 'none' : 'flex'}; gap: 4px; position: relative;">
+					{#if activeStates.table}
+						<button class="bubble-btn" title="Add Row Below" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().addRowAfter().run() }}>R+</button>
+						<button class="bubble-btn" title="Add Col Right" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().addColumnAfter().run() }}>C+</button>
+						<button class="bubble-btn" title="Delete Row" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteRow().run() }}>R-</button>
+						<button class="bubble-btn" title="Delete Col" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteColumn().run() }}>C-</button>
+						<button class="bubble-btn" style="color: #ff4444;" title="Delete Table" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteTable().run() }}>X</button>
+					{:else}
 					<!-- Heading Selector -->
 					<button class="bubble-btn heading-btn" onmousedown={(e) => { e.preventDefault(); showHeadingMenu = !showHeadingMenu; showMoreMenu = false; }}>
 						{activeStates.headingLevel === 0 ? 'Text' : `Heading ${activeStates.headingLevel}`}
@@ -602,13 +611,6 @@
 						</div>
 					{/if}
 
-					{#if activeStates.table}
-						<div class="bubble-divider"></div>
-						<button class="bubble-btn" title="Add Row Below" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().addRowAfter().run() }}>R+</button>
-						<button class="bubble-btn" title="Add Col Right" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().addColumnAfter().run() }}>C+</button>
-						<button class="bubble-btn" title="Delete Row" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteRow().run() }}>R-</button>
-						<button class="bubble-btn" title="Delete Col" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteColumn().run() }}>C-</button>
-						<button class="bubble-btn" style="color: #ff4444;" title="Delete Table" onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().deleteTable().run() }}>X</button>
 					{/if}
 				</div>
 			{/if}
