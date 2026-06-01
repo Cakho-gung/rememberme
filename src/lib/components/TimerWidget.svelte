@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
 
+  let { onComplete = () => {} }: { onComplete?: () => void } = $props();
+
   type TimerState = 'idle' | 'dragging' | 'running' | 'paused';
   let currentState: TimerState = $state('idle');
   
@@ -9,8 +11,11 @@
   let dragX = $state(0);
   let maxX = $state(0);
   
-  const MAX_MINUTES = 60;
-  const MAX_SECONDS = MAX_MINUTES * 60;
+  let containerWidth = $state(0);
+  
+  // Tạm thời set 10s để test
+  const MAX_MINUTES = 10; // Coi label là giây
+  const MAX_SECONDS = 10;
   
   let timeRemaining = $state(0);
   let totalTimeSet = $state(0);
@@ -20,16 +25,28 @@
   let isHovered = $state(false);
   let isStopping = $state(false);
 
-  const timeLabels = [0, 10, 20, 30, 40, 50];
-  const timeDots = [5, 15, 25, 35, 45, 55];
+  // Sửa label thành các mốc giây để test
+  const timeLabels = [0, 2, 4, 6, 8];
+  const timeDots = [1, 3, 5, 7, 9];
+
+  $effect(() => {
+    if (containerWidth > 0) {
+      maxX = Math.max(0, containerWidth - 32);
+      // Nếu đang chạy hoặc tạm dừng, phải tính lại dragX theo width mới
+      if (currentState === 'running' || currentState === 'paused') {
+        const percentage = timeRemaining / MAX_SECONDS;
+        dragX = percentage * maxX;
+      }
+    }
+  });
 
   function startDrag(e: PointerEvent) {
     if (currentState === 'running' || currentState === 'paused' || isStopping) return;
     
     currentState = 'dragging';
-    if (containerRef) {
-      // Container width minus button width (32) and padding
-      maxX = containerRef.clientWidth - 32;
+    if (containerWidth > 0) {
+      // Container width minus button width (32)
+      maxX = Math.max(0, containerWidth - 32);
     }
     
     if (e.target instanceof Element) {
@@ -106,6 +123,7 @@
   function onTimerComplete() {
     isStopping = true;
     dragX = 0;
+    onComplete();
     setTimeout(() => {
       isStopping = false;
       currentState = 'idle';
@@ -147,6 +165,7 @@
 <div 
   class="timer-widget-container" 
   bind:this={containerRef}
+  bind:clientWidth={containerWidth}
   onmouseenter={() => isHovered = true}
   onmouseleave={() => isHovered = false}
 >

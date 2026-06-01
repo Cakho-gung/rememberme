@@ -187,20 +187,60 @@
   }
 
   let isWindowFocused = $state(true);
+  let isTimerAlerting = $state(false);
+  let blurTimeout: ReturnType<typeof setTimeout>;
 
   function handleWindowBlur() {
-    isDotDragging = false;
-    hoveredToolAction = null;
-    isMenuOpen = false;
-    isAccentMenuOpen = false;
-    isWindowFocused = false;
+    clearTimeout(blurTimeout);
+    // Đợi 300ms, nếu không có focus lại thì mới coi là mất focus thật. 
+    // Tránh bị nháy (glitch) khi resize cửa sổ hoặc mở overlay menu của OS.
+    blurTimeout = setTimeout(() => {
+      isWindowFocused = false;
+      isDotDragging = false;
+      hoveredToolAction = null;
+      isMenuOpen = false;
+      isAccentMenuOpen = false;
+    }, 300);
+  }
+
+  function dismissTimerAlert() {
+    if (isTimerAlerting) {
+      isTimerAlerting = false;
+    }
   }
 
   function handleWindowFocus() {
+    clearTimeout(blurTimeout); // Hủy lệnh mất focus nếu focus lại quá nhanh
     isWindowFocused = true;
+    
+    // Tắt báo thức nếu user focus lại vào app
+    dismissTimerAlert();
+  }
+
+  async function handleTimerComplete() {
+    isTimerAlerting = true;
+    
+    // Cập nhật luôn trạng thái UI thành Pinned (để đồng bộ và chắc chắn thực thi trước khi gọi API)
+    isPinned = true;
+    
+    // Gọi Tauri API để mang cửa sổ lên trên cùng
+    try {
+      const appWindow = getCurrentWindow();
+      // Mẹo ép OS đưa cửa sổ lên trên cùng (bỏ qua chặn focus của Windows)
+      await appWindow.setAlwaysOnTop(true);
+      await appWindow.setFocus();
+    } catch (e) {
+      console.error("Failed to bring window to front:", e);
+    }
+  }
+
+  function handleWindowKeyDown(e: KeyboardEvent) {
+    dismissTimerAlert();
   }
 
   function handleWindowPointerDown(e: PointerEvent) {
+    dismissTimerAlert();
+    
     const target = e.target as HTMLElement;
     
     if (isMenuOpen) {
@@ -548,15 +588,21 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   }
 </script>
 
-<svelte:window onblur={handleWindowBlur} onfocus={handleWindowFocus} onpointerdown={handleWindowPointerDown} />
+<svelte:window 
+  onblur={handleWindowBlur} 
+  onfocus={handleWindowFocus} 
+  onpointerdown={handleWindowPointerDown} 
+  onkeydown={handleWindowKeyDown}
+/>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <main class="app-container" onpointerdown={startDragging}>
   <AnimatedGradientBorder 
-    glowWidth="32px"
-    blur="80px"
-    isFocused={isWindowFocused}
-    style="border-radius: 24px;"
+    glowWidth="15vmin"
+    blur="15vmin"
+    isFocused={isWindowFocused || isTimerAlerting}
+    forceVisible={isTimerAlerting}
+    style="border-radius: 25vmin; scale: 1.6 1.4;"
   />
   <div 
     class="glass-widget" 
@@ -677,7 +723,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
         <!-- Timer row -->
         <div class="timer-row delay-5">
-          <TimerWidget />
+          <TimerWidget onComplete={handleTimerComplete} />
         </div>
       {/if}
     </div>
