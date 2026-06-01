@@ -5,6 +5,7 @@
   import Editor from '$lib/components/Editor.svelte';
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
+  import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
   import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, type Note } from '$lib/db';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
@@ -551,6 +552,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <main class="app-container" onpointerdown={startDragging}>
+  <AnimatedGradientBorder 
+    glowWidth="32px"
+    blur="80px"
+    isFocused={isWindowFocused}
+    style="border-radius: 24px;"
+  />
   <div 
     class="glass-widget" 
     class:collapsed={isCollapsed} 
