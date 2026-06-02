@@ -6,7 +6,7 @@
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
   import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
-  import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, deleteNoteImages, type Note } from '$lib/db';
+  import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, cleanupOrphanedImages, type Note } from '$lib/db';
   import { playCollapse, playThemeLight, playThemeDark, playHover } from '$lib/audio';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
@@ -146,21 +146,13 @@
     }
   }
 
-  async function permanentlyDeleteNote(id: number) {
-    const note = mockNotes.find(n => n.id === id);
-    if (note) {
-      let content = note.content;
-      if (content === null) {
-        content = await loadNoteContent(id);
-      }
-      if (content !== null) {
-        await deleteNoteImages(content);
-      }
-    }
-
+  function permanentlyDeleteNote(id: number) {
     mockNotes = mockNotes.filter(n => n.id !== id);
     scheduleSaveIndex();
-    deleteNoteData(id);
+    deleteNoteData(id).then(() => {
+      // Run GC after the note JSON is deleted
+      cleanupOrphanedImages();
+    });
     if (activeNoteId === id) {
       const next = mockNotes.find(n => !n.archived);
       if (next) selectNote(next.id);
@@ -550,6 +542,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       await saveNoteContent(1, mockNotes[0].content);
     }
     isLoading = false;
+
+    // Run Garbage Collection for orphaned images on app startup
+    cleanupOrphanedImages();
   });
 
   let activeNote = $derived(mockNotes.find(n => n.id === activeNoteId && !n.archived) || mockNotes.find(n => !n.archived));

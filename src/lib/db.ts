@@ -3,8 +3,8 @@ import {
   writeTextFile,
   exists,
   mkdir,
-  remove,
   BaseDirectory,
+  readDir,
 } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -163,16 +163,54 @@ export function extractImagePaths(content: any): string[] {
 }
 
 /**
- * Delete all image files referenced in the note content
+ * Garbage Collection: Delete all image files that are not referenced in ANY note.
  */
-export async function deleteNoteImages(content: any): Promise<void> {
-  const paths = extractImagePaths(content);
-  for (const path of paths) {
-    try {
-      await invoke('delete_image', { path });
-      console.log(`[db] Deleted image: ${path}`);
-    } catch (err) {
-      console.error(`[db] Failed to delete image ${path}:`, err);
+export async function cleanupOrphanedImages(): Promise<void> {
+  const inUsePaths = new Set<string>();
+
+  try {
+    // 1. Scan all notes to find all used image filenames
+    const entries = await readDir(NOTES_DIR, { baseDir: BaseDirectory.Document });
+    for (const entry of entries) {
+      if (entry.name && entry.name.endsWith('.json') && entry.name !== 'index.json') {
+        try {
+          const raw = await readTextFile(`${NOTES_DIR}/${entry.name}`, { baseDir: BaseDirectory.Document });
+          const noteContent = JSON.parse(raw);
+          const used = extractImagePaths(noteContent);
+          
+          // Store only the filename to match with `readDir`
+          used.forEach(p => {
+            const filename = p.split(/[/\\]/).pop();
+            if (filename) inUsePaths.add(filename);
+          });
+        } catch (e) {
+          console.error(`[db] Failed to parse note ${entry.name} when checking images`, e);
+        }
+      }
     }
+
+    // 2. Scan the images directory
+    const IMAGES_DIR = 'RememberMe/images';
+    const imageExists = await exists(IMAGES_DIR, { baseDir: BaseDirectory.Document });
+    if (!imageExists) return;
+
+    const imageFiles = await readDir(IMAGES_DIR, { baseDir: BaseDirectory.Document });
+    
+    // 3. For each file in images dir, check if it's in inUsePaths
+    for (const file of imageFiles) {
+      if (file.name && file.isFile) {
+        if (!inUsePaths.has(file.name)) {
+          // It's an orphan! Delete it.
+          try {
+            await invoke('delete_image_by_name', { name: file.name });
+            console.log(`[db] GC: Deleted orphaned image: ${file.name}`);
+          } catch (err) {
+            console.error(`[db] GC: Failed to delete orphaned image ${file.name}:`, err);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[db] Failed to run image Garbage Collection:', err);
   }
 }

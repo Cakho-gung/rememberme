@@ -14,18 +14,43 @@ import { openPath } from '@tauri-apps/plugin-opener';
 
 const ImagePasteKey = new PluginKey('imagePaste');
 
-async function uploadImageBlob(blob: Blob): Promise<{ src: string; path: string }> {
-  const ext = blob.type === 'image/png' ? 'png'
-    : blob.type === 'image/jpeg' ? 'jpg'
-    : blob.type === 'image/gif' ? 'gif'
-    : blob.type === 'image/webp' ? 'webp'
-    : 'png';
+function isImageFile(file: File): boolean {
+  if (file.type && file.type.startsWith('image/')) return true;
+  if (file.name) {
+    const ext = file.name.toLowerCase().split('.').pop();
+    if (ext && ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext)) {
+      return true;
+    }
+  }
+  return false;
+}
 
-  const arrayBuffer = await blob.arrayBuffer();
-  const bytes = Array.from(new Uint8Array(arrayBuffer));
+async function uploadImageBlob(blob: Blob): Promise<{ src: string; path: string }> {
+  let ext = 'png';
+  if (blob instanceof File && blob.name) {
+    const nameExt = blob.name.toLowerCase().split('.').pop();
+    if (nameExt) ext = nameExt;
+  } else {
+    ext = blob.type === 'image/jpeg' ? 'jpg'
+      : blob.type === 'image/gif' ? 'gif'
+      : blob.type === 'image/webp' ? 'webp'
+      : 'png';
+  }
+
+  // Chuyển Blob thành Base64 để gửi qua IPC nhanh hơn mảng byte JSON rất nhiều
+  const base64Data = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      const b64 = dataUrl.split(',')[1];
+      resolve(b64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 
   const filePath = await invoke<string>('save_image', {
-    imageData: bytes,
+    imageBase64: base64Data,
     ext,
   });
 
@@ -38,7 +63,7 @@ async function insertImages(
   view: any,
   pos?: number
 ) {
-  const imageFiles = files.filter(f => f.type.startsWith('image/'));
+  const imageFiles = files.filter(f => isImageFile(f));
   if (imageFiles.length === 0) return false;
 
   for (const file of imageFiles) {
@@ -87,9 +112,9 @@ export const ImagePasteExtension = Extension.create({
 
             const imageFiles: File[] = [];
             for (const item of Array.from(items)) {
-              if (item.type.startsWith('image/')) {
-                const file = item.getAsFile();
-                if (file) imageFiles.push(file);
+              const file = item.getAsFile();
+              if (file && isImageFile(file)) {
+                imageFiles.push(file);
               }
             }
 
@@ -105,7 +130,7 @@ export const ImagePasteExtension = Extension.create({
             const files = event.dataTransfer?.files;
             if (!files || files.length === 0) return false;
 
-            const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+            const imageFiles = Array.from(files).filter(f => isImageFile(f));
             if (imageFiles.length === 0) return false;
 
             event.preventDefault();

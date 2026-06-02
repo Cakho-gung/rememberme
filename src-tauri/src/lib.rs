@@ -5,11 +5,16 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use std::path::PathBuf;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use sha2::{Sha256, Digest};
 
 /// Save raw image bytes to {documents}/RememberMe/images/{uuid}.{ext}
 /// Returns the absolute file path as a string.
 #[tauri::command]
-fn save_image(app: tauri::AppHandle, image_data: Vec<u8>, ext: String) -> Result<String, String> {
+fn save_image(app: tauri::AppHandle, image_base64: String, ext: String) -> Result<String, String> {
+    // Decode base64
+    let image_data = BASE64.decode(image_base64).map_err(|e| format!("Invalid base64: {e}"))?;
+
     // Resolve the documents directory
     let docs_dir = app
         .path()
@@ -22,12 +27,20 @@ fn save_image(app: tauri::AppHandle, image_data: Vec<u8>, ext: String) -> Result
     std::fs::create_dir_all(&images_dir)
         .map_err(|e| format!("Cannot create images dir: {e}"))?;
 
-    // Generate a unique filename
-    let filename = format!("{}.{}", uuid::Uuid::new_v4(), ext);
+    // Generate SHA-256 hash of the image
+    let mut hasher = Sha256::new();
+    hasher.update(&image_data);
+    let hash = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect::<String>();
+
+    // Generate filename using hash
+    let filename = format!("{}.{}", hash, ext);
     let file_path = images_dir.join(&filename);
 
-    std::fs::write(&file_path, &image_data)
-        .map_err(|e| format!("Cannot write image: {e}"))?;
+    // Only write if file doesn't already exist
+    if !file_path.exists() {
+        std::fs::write(&file_path, &image_data)
+            .map_err(|e| format!("Cannot write image: {e}"))?;
+    }
 
     file_path
         .to_str()
@@ -39,7 +52,7 @@ fn save_image(app: tauri::AppHandle, image_data: Vec<u8>, ext: String) -> Result
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let window = app.get_webview_window("main").unwrap();
+            let _window = app.get_webview_window("main").unwrap();
 
             // No OS-level window vibrancy needed as per user request
 
@@ -106,7 +119,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![save_image, delete_image])
+        .invoke_handler(tauri::generate_handler![save_image, delete_image, delete_image_by_name])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -114,4 +127,18 @@ pub fn run() {
 #[tauri::command]
 fn delete_image(path: String) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| format!("Cannot delete image: {e}"))
+}
+
+#[tauri::command]
+fn delete_image_by_name(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    let docs_dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("Cannot resolve documents dir: {e}"))?;
+
+    let file_path = docs_dir.join("RememberMe").join("images").join(name);
+    if file_path.exists() {
+        std::fs::remove_file(&file_path).map_err(|e| format!("Cannot delete image: {e}"))?;
+    }
+    Ok(())
 }
