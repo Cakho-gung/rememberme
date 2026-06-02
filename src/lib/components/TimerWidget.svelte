@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { playTick, playAlarm, requestNotificationPermission, showNotification, playStart, playPause, playStop } from '$lib/audio';
+  import { playTick, playAlarm, showNotification, playStart, playPause, playStop } from '$lib/audio';
 
   let { onComplete = () => {} }: { onComplete?: () => void } = $props();
 
@@ -94,7 +94,6 @@
     window.removeEventListener('pointerup', onDragEnd as EventListener);
     
     if (totalTimeSet > 0) {
-      requestNotificationPermission();
       playStart();
       currentState = 'running';
       timeRemaining = totalTimeSet;
@@ -135,8 +134,18 @@
     dragX = 0;
     
     playAlarm();
-    showNotification("Timer Complete", {
-      body: "Your time is up!",
+    
+    const funnyMessages = [
+      "Time's up! Back to work, boss! 🚀",
+      "Beep beep beep! Time limit reached, you're on fire! 🔥",
+      "Ring ring! Time is up, back to reality! 👽",
+      "Awesome! One session done, stand up and stretch! 🕺",
+      "Time's up! The deadline is chasing you! 🏃‍♂️💨"
+    ];
+    const randomMsg = funnyMessages[Math.floor(Math.random() * funnyMessages.length)];
+    
+    showNotification("RememberMe - Time's up!", {
+      body: randomMsg,
     });
 
     onComplete();

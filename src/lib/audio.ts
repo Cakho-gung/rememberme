@@ -1,5 +1,26 @@
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 
+// ── Sound Enabled Toggle ──
+let _soundEnabled = true;
+
+export function isSoundEnabled(): boolean {
+  return _soundEnabled;
+}
+
+export function setSoundEnabled(value: boolean) {
+  _soundEnabled = value;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('soundEnabled', value ? '1' : '0');
+  }
+}
+
+export function loadSoundPreference() {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('soundEnabled');
+    _soundEnabled = stored !== '0'; // default true
+  }
+}
+
 // Cache audio elements so they don't have to be re-created every time
 const audios: Record<string, HTMLAudioElement | null> = {
   tick: null,
@@ -28,6 +49,7 @@ function initAudio() {
 }
 
 function playSound(key: string, clone: boolean = false) {
+  if (!_soundEnabled) return;
   try {
     initAudio();
     const audio = audios[key];

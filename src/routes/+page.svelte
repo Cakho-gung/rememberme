@@ -6,8 +6,9 @@
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
   import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
+  import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, cleanupOrphanedImages, type Note } from '$lib/db';
-  import { playCollapse, playThemeLight, playThemeDark, playHover } from '$lib/audio';
+  import { playCollapse, playThemeLight, playThemeDark, playHover, requestNotificationPermission, loadSoundPreference } from '$lib/audio';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -16,6 +17,7 @@
   let isMenuOpen = $state(false);
   let isEditingTitle = $state(false);
   let titleEditValue = $state('');
+  let isSettingsOpen = $state(false);
 
   function focus(node: HTMLElement) {
     node.focus();
@@ -37,8 +39,12 @@
   }
 
   function handleSettings() {
-    console.log('Settings clicked');
+    isSettingsOpen = true;
     isMenuOpen = false;
+  }
+
+  function closeSettings() {
+    isSettingsOpen = false;
   }
 
   async function startDragging(e: PointerEvent) {
@@ -340,11 +346,13 @@
       
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const toolBtn = el?.closest('.tool-btn') as HTMLElement;
-      if (toolBtn && toolBtn.dataset.action) {
-        hoveredToolAction = toolBtn.dataset.action;
-      } else {
-        hoveredToolAction = null;
+      const newAction = toolBtn && toolBtn.dataset.action ? toolBtn.dataset.action : null;
+      
+      if (newAction && newAction !== hoveredToolAction) {
+        playHover();
       }
+      
+      hoveredToolAction = newAction;
     }
   }
 
@@ -403,6 +411,7 @@
 
   // -- Accent Color State --
   const accentColors = [
+    { name: 'Gray', hex: '#6B7280', hover: '#4B5563', text: '#ffffff' },
     { name: 'Green', hex: '#38AA57', hover: '#38AA57', text: '#ffffff' },
     { name: 'Blue', hex: '#1484FF', hover: '#1484FF', text: '#ffffff' },
     { name: 'Pink', hex: '#E609B2', hover: '#E609B2', text: '#ffffff' },
@@ -468,8 +477,16 @@
         document.documentElement.style.setProperty('--color-accent-text', color.text || '#ffffff');
       } catch (e) {}
     } else {
+      document.documentElement.style.setProperty('--color-accent', currentAccent.hex);
+      document.documentElement.style.setProperty('--color-accent-hover', currentAccent.hover);
       document.documentElement.style.setProperty('--color-accent-text', currentAccent.text);
     }
+    
+    // Load sound preference from localStorage
+    loadSoundPreference();
+    
+    // Xin quyền gửi thông báo khi khởi động app
+    await requestNotificationPermission();
 
     const notes = await loadNotes();
     if (notes.length > 0) {
@@ -795,8 +812,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       {/if}
     </div>
 
-    <!-- Menu dot: absolute top-right -->
-    <button class="close-dot {isMenuOpen ? 'active' : ''}" aria-label="Menu" onpointerdown={onDotPointerDown} onclick={handleDotClick}></button>
+    <!-- Menu dot: absolute top-right (hidden when settings panel is open) -->
+    {#if !isSettingsOpen}
+      <button class="close-dot {isMenuOpen ? 'active' : ''}" aria-label="Menu" onpointerdown={onDotPointerDown} onclick={handleDotClick}></button>
+    {/if}
     
     <!-- Overlay Menu -->
     {#if isMenuOpen}
@@ -925,6 +944,11 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
         <line x1={dotStartX} y1={dotStartY} x2={currentPointerX} y2={currentPointerY} class="drag-line" />
         <circle cx={currentPointerX} cy={currentPointerY} r="5" class="drag-pointer" />
       </svg>
+    {/if}
+
+    <!-- Settings Panel -->
+    {#if isSettingsOpen}
+      <SettingsPanel onClose={closeSettings} />
     {/if}
   </div>
 </main>
