@@ -106,7 +106,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![save_image])
+        .invoke_handler(tauri::generate_handler![save_image, delete_image])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn delete_image(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| format!("Cannot delete image: {e}"))
 }

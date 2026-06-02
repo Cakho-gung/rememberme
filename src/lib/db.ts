@@ -6,6 +6,7 @@ import {
   remove,
   BaseDirectory,
 } from '@tauri-apps/plugin-fs';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface NoteMeta {
   id: number;
@@ -133,5 +134,45 @@ export async function deleteNoteData(id: number): Promise<void> {
     }
   } catch (err) {
     console.error(`[db] Failed to delete content for note ${id}:`, err);
+  }
+}
+
+/**
+ * Extract absolute image paths from Tiptap JSON content
+ */
+export function extractImagePaths(content: any): string[] {
+  if (!content || typeof content !== 'object') return [];
+  
+  const paths: string[] = [];
+  
+  function traverse(node: any) {
+    if (!node || typeof node !== 'object') return;
+    
+    if (node.type === 'image' && node.attrs && node.attrs.title) {
+      // The `title` attribute stores the absolute file path, as set in ImagePasteExtension
+      paths.push(node.attrs.title);
+    }
+    
+    if (Array.isArray(node.content)) {
+      node.content.forEach(traverse);
+    }
+  }
+  
+  traverse(content);
+  return paths;
+}
+
+/**
+ * Delete all image files referenced in the note content
+ */
+export async function deleteNoteImages(content: any): Promise<void> {
+  const paths = extractImagePaths(content);
+  for (const path of paths) {
+    try {
+      await invoke('delete_image', { path });
+      console.log(`[db] Deleted image: ${path}`);
+    } catch (err) {
+      console.error(`[db] Failed to delete image ${path}:`, err);
+    }
   }
 }

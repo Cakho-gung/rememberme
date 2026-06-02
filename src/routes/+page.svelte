@@ -6,7 +6,7 @@
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
   import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
-  import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, type Note } from '$lib/db';
+  import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, deleteNoteImages, type Note } from '$lib/db';
   import { playCollapse, playThemeLight, playThemeDark, playHover } from '$lib/audio';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
@@ -146,7 +146,18 @@
     }
   }
 
-  function permanentlyDeleteNote(id: number) {
+  async function permanentlyDeleteNote(id: number) {
+    const note = mockNotes.find(n => n.id === id);
+    if (note) {
+      let content = note.content;
+      if (content === null) {
+        content = await loadNoteContent(id);
+      }
+      if (content !== null) {
+        await deleteNoteImages(content);
+      }
+    }
+
     mockNotes = mockNotes.filter(n => n.id !== id);
     scheduleSaveIndex();
     deleteNoteData(id);
