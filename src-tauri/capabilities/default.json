@@ -20,6 +20,10 @@
     "fs:allow-write-text-file",
     "fs:allow-mkdir",
     "fs:allow-exists",
-    "fs:scope-document-recursive"
+    "fs:scope-document-recursive",
+    "core:window:allow-current-monitor",
+    "core:window:allow-outer-size",
+    "core:window:allow-outer-position",
+    "core:window:allow-set-position"
   ]
 }

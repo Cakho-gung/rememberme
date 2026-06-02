@@ -1,0 +1,10 @@
+# Put your audio files in this directory:
+- tick.mp3 (Kéo thời gian)
+- alarm.mp3 (Hết giờ)
+- start.mp3 (Bắt đầu)
+- pause.mp3 (Tạm dừng)
+- stop.mp3 (Hủy timer)
+- collapse.mp3 (Thu gọn/Mở rộng cửa sổ)
+- hover.mp3 (Di chuột qua nút)
+- theme_light.mp3 (Đổi theme sáng)
+- theme_dark.mp3 (Đổi theme tối)

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { playTick, playAlarm, requestNotificationPermission, showNotification, playStart, playPause, playStop } from '$lib/audio';
 
   let { onComplete = () => {} }: { onComplete?: () => void } = $props();
 
@@ -22,6 +23,7 @@
   
   let requestRef: number | null = null;
   let lastTime = 0;
+  let lastTickTime = 0;
   let isHovered = $state(false);
   let isStopping = $state(false);
 
@@ -75,6 +77,12 @@
     
     const percentage = newX / maxX;
     totalTimeSet = percentage * MAX_SECONDS;
+    
+    const currentTickTime = Math.floor(totalTimeSet * 5);
+    if (currentTickTime !== lastTickTime && currentTickTime > 0) {
+      playTick();
+      lastTickTime = currentTickTime;
+    }
   }
 
   function onDragEnd(e: PointerEvent) {
@@ -86,6 +94,8 @@
     window.removeEventListener('pointerup', onDragEnd as EventListener);
     
     if (totalTimeSet > 0) {
+      requestNotificationPermission();
+      playStart();
       currentState = 'running';
       timeRemaining = totalTimeSet;
       startTimer();
@@ -123,25 +133,33 @@
   function onTimerComplete() {
     isStopping = true;
     dragX = 0;
+    
+    playAlarm();
+    showNotification("Timer Complete", {
+      body: "Your time is up!",
+    });
+
     onComplete();
     setTimeout(() => {
       isStopping = false;
       currentState = 'idle';
-      // TODO: implement notification or completion animation here
     }, 400);
   }
 
   function togglePause() {
     if (currentState === 'running') {
+      playPause();
       currentState = 'paused';
       if (requestRef) cancelAnimationFrame(requestRef);
     } else if (currentState === 'paused') {
+      playStart();
       currentState = 'running';
       startTimer();
     }
   }
 
   function stopTimer() {
+    playStop();
     if (requestRef) cancelAnimationFrame(requestRef);
     isStopping = true;
     dragX = 0;

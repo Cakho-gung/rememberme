@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
+  import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
   import { fade } from 'svelte/transition';
   import { onMount, tick } from 'svelte';
   import Editor from '$lib/components/Editor.svelte';
@@ -7,6 +7,7 @@
   import TimerWidget from '$lib/components/TimerWidget.svelte';
   import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
   import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, type Note } from '$lib/db';
+  import { playCollapse, playThemeLight, playThemeDark, playHover } from '$lib/audio';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -234,8 +235,52 @@
     }
   }
 
-  function handleWindowKeyDown(e: KeyboardEvent) {
+  async function handleWindowKeyDown(e: KeyboardEvent) {
     dismissTimerAlert();
+
+    if (e.altKey) {
+      const key = e.key.toLowerCase();
+      
+      if (key === 'f') {
+        e.preventDefault();
+        await toggleCollapse();
+        return;
+      }
+      
+      if (['w', 'a', 's', 'd'].includes(key)) {
+        e.preventDefault();
+        const appWindow = getCurrentWindow();
+        const monitor = await appWindow.currentMonitor();
+        if (!monitor) return;
+        
+        const scaleFactor = monitor.scaleFactor;
+        
+        const workAreaWidth = monitor.workArea.size.width / scaleFactor;
+        const workAreaHeight = monitor.workArea.size.height / scaleFactor;
+        const workAreaX = monitor.workArea.position.x / scaleFactor;
+        const workAreaY = monitor.workArea.position.y / scaleFactor;
+        
+        const size = await appWindow.outerSize();
+        const windowWidth = size.width / scaleFactor;
+        const windowHeight = size.height / scaleFactor;
+        
+        const currentPos = await appWindow.outerPosition();
+        let newX = currentPos.x / scaleFactor;
+        let newY = currentPos.y / scaleFactor;
+        
+        if (key === 'w') {
+          newY = workAreaY;
+        } else if (key === 's') {
+          newY = workAreaY + workAreaHeight - windowHeight;
+        } else if (key === 'a') {
+          newX = workAreaX;
+        } else if (key === 'd') {
+          newX = workAreaX + workAreaWidth - windowWidth;
+        }
+        
+        await appWindow.setOuterPosition(new LogicalPosition(newX, newY));
+      }
+    }
   }
 
   function handleWindowPointerDown(e: PointerEvent) {
@@ -343,9 +388,11 @@
   function toggleTheme() {
     isDarkMode = !isDarkMode;
     if (isDarkMode) {
+      playThemeDark();
       document.documentElement.setAttribute('data-theme', 'dark');
       localStorage.setItem('theme', 'dark');
     } else {
+      playThemeLight();
       document.documentElement.removeAttribute('data-theme');
       localStorage.setItem('theme', 'light');
     }
@@ -545,6 +592,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     toggleDropdown();
   }
   async function toggleCollapse() {
+    playCollapse();
     const appWindow = getCurrentWindow();
     
     if (!isCollapsed) {
@@ -586,6 +634,18 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     if (isCollapsed) return; // Don't open dropdown if collapsed
     isDropdownOpen = !isDropdownOpen;
   }
+
+  let lastHoveredBtn: Element | null = null;
+  function handleGlobalMouseOver(e: MouseEvent) {
+    if (!(e.target instanceof Element)) return;
+    const btn = e.target.closest('.tool-btn, .title-icon-btn, .timer-btn, .archive-item-btn, .dropdown-item, .trash-item-actions button, .close-dot');
+    if (btn && btn !== lastHoveredBtn) {
+      playHover();
+      lastHoveredBtn = btn;
+    } else if (!btn) {
+      lastHoveredBtn = null;
+    }
+  }
 </script>
 
 <svelte:window 
@@ -593,6 +653,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   onfocus={handleWindowFocus} 
   onpointerdown={handleWindowPointerDown} 
   onkeydown={handleWindowKeyDown}
+  onmouseover={handleGlobalMouseOver}
 />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
