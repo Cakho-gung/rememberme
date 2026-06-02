@@ -12,9 +12,20 @@
 		e.preventDefault();
 		command(item);
 	}
+
+	let menuRef = $state<HTMLDivElement | null>(null);
+
+	$effect(() => {
+		if (selectedIndex >= 0 && menuRef) {
+			const activeBtn = menuRef.querySelector('.is-active');
+			if (activeBtn) {
+				activeBtn.scrollIntoView({ block: 'nearest' });
+			}
+		}
+	});
 </script>
 
-<div class="slash-menu">
+<div class="slash-menu" bind:this={menuRef}>
 	<ul>
 		{#if items.length > 0}
 			{#each items as item, index}
@@ -49,12 +60,31 @@
 	.slash-menu {
 		display: flex;
 		flex-direction: column;
-		background: #ffffff;
-		border: 1px solid rgba(0, 0, 0, 0.1);
+		background: var(--bg-focused, #ffffff);
+		border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.15));
 		border-radius: 8px;
 		padding: 4px;
 		min-width: 180px;
+		max-height: 250px;
+		overflow-y: auto;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 	}
+
+	/* Tùy chỉnh thanh cuộn cho khớp với theme */
+	.slash-menu::-webkit-scrollbar {
+		width: 6px;
+	}
+	.slash-menu::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	.slash-menu::-webkit-scrollbar-thumb {
+		background: rgba(128, 128, 128, 0.25);
+		border-radius: 4px;
+	}
+	.slash-menu::-webkit-scrollbar-thumb:hover {
+		background: rgba(128, 128, 128, 0.4);
+	}
+
 	.slash-menu button {
 		display: block;
 		width: 100%;
@@ -66,14 +96,15 @@
 		cursor: pointer;
 		font-family: inherit;
 		font-size: 14px;
-		color: #333;
+		color: var(--color-text, #333);
 	}
 	.slash-menu button:hover, .slash-menu button.is-active {
-		background: rgba(0, 0, 0, 0.05);
+		background: rgba(128, 128, 128, 0.15);
 	}
 	.slash-menu button.empty-btn {
 		cursor: default;
-		color: #999;
+		color: var(--color-text, #999);
+        opacity: 0.5;
 	}
 	.slash-menu button.empty-btn:hover {
 		background: transparent;

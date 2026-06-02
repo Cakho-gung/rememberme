@@ -77,7 +77,7 @@ export const EmojiExtension = Emoji.configure({
 						trigger: 'manual',
 						placement: 'bottom-start',
 						animation: 'fade',
-						theme: 'light',
+						arrow: false,
 					});
 				},
 

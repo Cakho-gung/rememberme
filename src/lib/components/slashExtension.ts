@@ -113,7 +113,7 @@ export const SlashCommands = Extension.create({
 								trigger: 'manual',
 								placement: 'bottom-start',
 								animation: 'fade',
-								theme: 'light', // Tippy default light or you can customize
+								arrow: false,
 							});
 						},
 
