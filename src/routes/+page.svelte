@@ -1260,8 +1260,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   .inner-column {
     display: flex;
     flex-direction: column;
-    flex: 1 0 0;
+    flex: 1 1 0;
     height: 100%;
+    min-height: 0;
     gap: 12px;
     min-width: 1px;
     position: relative;
