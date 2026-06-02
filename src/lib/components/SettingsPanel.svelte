@@ -147,7 +147,34 @@
   // Section open states (collapsed by default)
   let soundOpen = $state(false);
   let uiScaleOpen = $state(false);
+  let timerOpen = $state(false);
   let shortcutsOpen = $state(false);
+
+  // ── Timer Limit ──
+  type TimerPreset = '20s' | '60m' | '2h' | '4h' | '8h';
+
+  const timerLabelsMap: Record<TimerPreset, string> = {
+    '20s': '20s',
+    '60m': '60m',
+    '2h':  '2h',
+    '4h':  '4h',
+    '8h':  '8h',
+  };
+
+  function getCurrentTimerPreset(): TimerPreset {
+    const saved = localStorage.getItem('timerPreset');
+    if (saved === '20s' || saved === '60m' || saved === '2h' || saved === '4h' || saved === '8h') {
+      return saved;
+    }
+    return '60m';
+  }
+
+  let currentTimerPreset = $state<TimerPreset>(getCurrentTimerPreset());
+
+  function setTimerPreset(preset: TimerPreset) {
+    currentTimerPreset = preset;
+    localStorage.setItem('timerPreset', preset);
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -252,7 +279,48 @@
 
     <div class="section-divider"></div>
 
-    <!-- ── Section 3: Keyboard Shortcuts ── -->
+    <!-- ── Section 3: Timer Limit ── -->
+    <div class="settings-section">
+      <button class="section-header" onclick={() => timerOpen = !timerOpen} aria-expanded={timerOpen}>
+        <div class="section-header-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          <span>Timer Limit</span>
+        </div>
+        <svg class="chevron {timerOpen ? 'open' : ''}" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M7.18963 10.5875C7.43137 10.8142 7.81065 10.8019 8.03729 10.5602L12.0373 6.31016C12.2639 6.06841 12.2517 5.68914 12.0099 5.4625C11.7682 5.23586 11.3889 5.24809 11.1623 5.48984L7.57246 9.35584L3.98263 5.48984C3.75599 5.24809 3.37672 5.23586 3.13497 5.4625C2.89322 5.68914 2.88099 6.06841 3.10763 6.31016L7.10763 10.5602L7.18963 10.5875Z"/>
+        </svg>
+      </button>
+
+      {#if timerOpen}
+        <div class="section-body" transition:fly={{ y: -4, duration: 150 }}>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Maximum Duration</span>
+              <span class="setting-desc">Set the maximum duration for the focus timer.</span>
+            </div>
+            <!-- Segmented scale picker -->
+            <div class="scale-selector" role="group" aria-label="Timer Limit">
+              {#each (['20s', '60m', '2h', '4h', '8h'] as TimerPreset[]) as preset}
+                <button
+                  class="scale-btn {currentTimerPreset === preset ? 'active' : ''}"
+                  onclick={() => setTimerPreset(preset)}
+                  aria-pressed={currentTimerPreset === preset}
+                >
+                  {timerLabelsMap[preset]}
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="section-divider"></div>
+
+    <!-- ── Section 4: Keyboard Shortcuts ── -->
     <div class="settings-section">
       <button class="section-header" onclick={() => shortcutsOpen = !shortcutsOpen} aria-expanded={shortcutsOpen}>
         <div class="section-header-left">

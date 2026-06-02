@@ -14,10 +14,81 @@
   
   let containerWidth = $state(0);
   
-  // Tạm thời set 10s để test
-  const MAX_MINUTES = 10; // Coi label là giây
-  const MAX_SECONDS = 10;
-  
+  // ── Load Preset Settings ──
+  type TimerPreset = '20s' | '60m' | '2h' | '4h' | '8h';
+
+  function getTimerPreset(): TimerPreset {
+    if (typeof window === 'undefined') return '60m';
+    const saved = localStorage.getItem('timerPreset');
+    if (saved === '20s' || saved === '60m' || saved === '2h' || saved === '4h' || saved === '8h') {
+      return saved;
+    }
+    return '60m';
+  }
+
+  const activePreset = getTimerPreset();
+
+  // Preset Mapping Configs:
+  // maxSeconds: the actual duration in seconds
+  // maxUnitsValue: the number to use for calculating dynamic labels
+  // unit: the visual unit suffix 's' or 'm'
+  // labels: round number markers to render
+  // dots: visual midpoint dots to render
+  const presetConfig: Record<TimerPreset, { 
+    maxSeconds: number; 
+    maxUnitsValue: number; 
+    unit: string;
+    labels: number[];
+    dots: number[];
+  }> = {
+    '20s': { 
+      maxSeconds: 20, 
+      maxUnitsValue: 20, 
+      unit: 's',
+      labels: [0, 4, 8, 12, 16],
+      dots: [2, 6, 10, 14, 18]
+    },
+    '60m': { 
+      maxSeconds: 3600, 
+      maxUnitsValue: 60, 
+      unit: 'm',
+      labels: [0, 10, 20, 30, 40, 50],
+      dots: [5, 15, 25, 35, 45, 55]
+    },
+    '2h':  { 
+      maxSeconds: 7200, 
+      maxUnitsValue: 120, 
+      unit: 'm',
+      labels: [0, 20, 40, 60, 80, 100],
+      dots: [10, 30, 50, 70, 90, 110]
+    },
+    '4h':  { 
+      maxSeconds: 14400, 
+      maxUnitsValue: 240, 
+      unit: 'm',
+      labels: [0, 40, 80, 120, 160, 200],
+      dots: [20, 60, 100, 140, 180, 220]
+    },
+    '8h':  { 
+      maxSeconds: 28800, 
+      maxUnitsValue: 480, 
+      unit: 'm',
+      labels: [0, 80, 160, 240, 320, 400],
+      dots: [40, 120, 200, 280, 360, 440]
+    },
+  };
+
+  const config = presetConfig[activePreset];
+
+  // Dynamic bounds configuration
+  const MAX_SECONDS = config.maxSeconds;
+  const MAX_MINUTES = config.maxUnitsValue; // Represent maxUnitsValue for geometry
+  const timerUnit = config.unit;
+
+  // Dynamic labels and ticks
+  const timeLabels = config.labels;
+  const timeDots = config.dots;
+
   let timeRemaining = $state(0);
   let totalTimeSet = $state(0);
   
@@ -26,10 +97,6 @@
   let lastTickTime = 0;
   let isHovered = $state(false);
   let isStopping = $state(false);
-
-  // Sửa label thành các mốc giây để test
-  const timeLabels = [0, 2, 4, 6, 8];
-  const timeDots = [1, 3, 5, 7, 9];
 
   $effect(() => {
     if (containerWidth > 0) {
@@ -69,8 +136,15 @@
     if (!containerRef) return;
     const rect = containerRef.getBoundingClientRect();
     
+    // Read live UI scale factor to convert viewport coordinates back to CSS coordinates
+    const uiScale = parseFloat(
+      document.documentElement.style.getPropertyValue('--ui-scale') ||
+      getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')
+    ) || 1;
+    
     // Calculate new X based on mouse position relative to container
-    let newX = e.clientX - rect.left - 16;
+    // Client X and rect.left are viewport coordinates, so we divide by uiScale to get CSS coordinates
+    let newX = (e.clientX - rect.left) / uiScale - 16;
     newX = Math.max(0, Math.min(newX, maxX));
     
     dragX = newX; // Smooth drag, no visual snapping
@@ -78,7 +152,8 @@
     const percentage = newX / maxX;
     totalTimeSet = percentage * MAX_SECONDS;
     
-    const currentTickTime = Math.floor(totalTimeSet * 5);
+    // Play ~50 ticks across the full slider range
+    const currentTickTime = Math.floor(percentage * 50);
     if (currentTickTime !== lastTickTime && currentTickTime > 0) {
       playTick();
       lastTickTime = currentTickTime;
@@ -221,7 +296,7 @@
           class:visible={(label / MAX_MINUTES) <= (maxX > 0 ? dragX / maxX : 0)}
           class:hidden-zero={label === 0 && (currentState === 'running' || currentState === 'paused')}
         >
-          <span class="mark-label">{label}</span>
+          <span class="mark-label">{label === 0 ? '0' : `${label}${timerUnit}`}</span>
         </div>
       {/each}
     </div>
