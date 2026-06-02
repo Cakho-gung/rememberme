@@ -131,6 +131,8 @@
   --close-dot-active-bg: rgba(0, 0, 0, 0.5);
   --dropdown-divider-bg: rgba(0, 0, 0, 0.1);
   --dropdown-item-hover: rgba(0, 0, 0, 0.05);
+  /* UI Scale: 1 = Small (default), 1.15 = Medium, 1.30 = Large */
+  --ui-scale: 1;
 }
 
 :root[data-theme="dark"] {

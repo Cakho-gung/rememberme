@@ -112,9 +112,42 @@
     return [...s.modifiers, s.key].join(' + ');
   }
 
-  // Section open states
-  let soundOpen = $state(true);
-  let shortcutsOpen = $state(true);
+  // ── UI Scale ──
+  type UIScale = 'small' | 'medium' | 'large';
+
+  const scaleMap: Record<UIScale, string> = {
+    small:  '1',
+    medium: '1.15',
+    large:  '1.30',
+  };
+
+  const scaleLabels: Record<UIScale, string> = {
+    small:  'Small',
+    medium: 'Medium',
+    large:  'Large',
+  };
+
+  // Read initial scale from current CSS variable (set in onMount by page.svelte)
+  function getCurrentScale(): UIScale {
+    const v = getComputedStyle(document.documentElement)
+      .getPropertyValue('--ui-scale').trim();
+    if (v === '1.15') return 'medium';
+    if (v === '1.30') return 'large';
+    return 'small';
+  }
+
+  let currentUIScale = $state<UIScale>(getCurrentScale());
+
+  function setUIScale(scale: UIScale) {
+    currentUIScale = scale;
+    document.documentElement.style.setProperty('--ui-scale', scaleMap[scale]);
+    localStorage.setItem('uiScale', scale);
+  }
+
+  // Section open states (collapsed by default)
+  let soundOpen = $state(false);
+  let uiScaleOpen = $state(false);
+  let shortcutsOpen = $state(false);
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -127,12 +160,12 @@
 >
   <!-- Header -->
   <div class="settings-header">
-    <span class="settings-title">Settings</span>
-    <button class="settings-close-btn" onclick={onClose} aria-label="Close settings">
+    <button class="settings-back-btn" onclick={onClose} aria-label="Back">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-        <path d="M11.6464 3.64645C11.8417 3.45118 12.1582 3.45118 12.3535 3.64645C12.5487 3.84171 12.5487 4.15822 12.3535 4.35348L8.70699 7.99996L12.3535 11.6464C12.5487 11.8417 12.5487 12.1582 12.3535 12.3535C12.1582 12.5487 11.8417 12.5487 11.6464 12.3535L7.99996 8.70699L4.35348 12.3535C4.15822 12.5487 3.84171 12.5487 3.64645 12.3535C3.45118 12.1582 3.45118 11.8417 3.64645 11.6464L7.29293 7.99996L3.64645 4.35348C3.45118 4.15822 3.45118 3.84171 3.64645 3.64645C3.84171 3.45118 4.15822 3.45118 4.35348 3.64645L7.99996 7.29293L11.6464 3.64645Z"/>
+        <path d="M9.96967 3.46967C10.2626 3.76256 10.2626 4.23744 9.96967 4.53033L6.49999 8L9.96967 11.4697C10.2626 11.7626 10.2626 12.2374 9.96967 12.5303C9.67678 12.8232 9.20191 12.8232 8.90901 12.5303L4.90901 8.53033C4.61612 8.23744 4.61612 7.76256 4.90901 7.46967L8.90901 3.46967C9.20191 3.17678 9.67678 3.17678 9.96967 3.46967Z"/>
       </svg>
     </button>
+    <span class="settings-title">Settings</span>
   </div>
 
   <div class="settings-body">
@@ -176,7 +209,50 @@
 
     <div class="section-divider"></div>
 
-    <!-- ── Section 2: Keyboard Shortcuts ── -->
+    <!-- ── Section 2: UI Scale ── -->
+    <div class="settings-section">
+      <button class="section-header" onclick={() => uiScaleOpen = !uiScaleOpen} aria-expanded={uiScaleOpen}>
+        <div class="section-header-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+          <span>UI Scale</span>
+        </div>
+        <svg class="chevron {uiScaleOpen ? 'open' : ''}" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M7.18963 10.5875C7.43137 10.8142 7.81065 10.8019 8.03729 10.5602L12.0373 6.31016C12.2639 6.06841 12.2517 5.68914 12.0099 5.4625C11.7682 5.23586 11.3889 5.24809 11.1623 5.48984L7.57246 9.35584L3.98263 5.48984C3.75599 5.24809 3.37672 5.23586 3.13497 5.4625C2.89322 5.68914 2.88099 6.06841 3.10763 6.31016L7.10763 10.5602L7.18963 10.5875Z"/>
+        </svg>
+      </button>
+
+      {#if uiScaleOpen}
+        <div class="section-body" transition:fly={{ y: -4, duration: 150 }}>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Interface Size</span>
+              <span class="setting-desc">Scale text, icons, and spacing.</span>
+            </div>
+            <!-- Segmented scale picker -->
+            <div class="scale-selector" role="group" aria-label="UI Scale">
+              {#each (['small', 'medium', 'large'] as UIScale[]) as scale}
+                <button
+                  class="scale-btn {currentUIScale === scale ? 'active' : ''}"
+                  onclick={() => setUIScale(scale)}
+                  aria-pressed={currentUIScale === scale}
+                >
+                  {scaleLabels[scale]}
+                </button>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="section-divider"></div>
+
+    <!-- ── Section 3: Keyboard Shortcuts ── -->
     <div class="settings-section">
       <button class="section-header" onclick={() => shortcutsOpen = !shortcutsOpen} aria-expanded={shortcutsOpen}>
         <div class="section-header-left">
@@ -244,7 +320,8 @@
   .settings-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 6px;
     padding: 12px 14px 10px;
     flex-shrink: 0;
     border-bottom: 1px solid var(--dropdown-divider-bg, rgba(0,0,0,0.08));
@@ -260,13 +337,14 @@
     opacity: 0.5;
   }
 
-  .settings-close-btn {
+  .settings-back-btn {
     background: transparent;
     border: none;
     color: var(--color-text);
-    opacity: 0.4;
+    opacity: 0.45;
     cursor: pointer;
     padding: 3px;
+    margin-left: -4px; /* offset padding to align visually with margins */
     border-radius: 4px;
     display: flex;
     align-items: center;
@@ -275,8 +353,12 @@
 
     &:hover {
       opacity: 1;
-      background: $color-danger;
-      color: #fff;
+      background: rgba(128, 128, 128, 0.1);
+      color: var(--color-accent, #6B7280);
+    }
+
+    &:active {
+      transform: scale(0.92);
     }
   }
 
@@ -548,5 +630,46 @@
   @keyframes pulse-border {
     0%, 100% { box-shadow: 0 0 0 0 rgba(128,128,128,0.3); }
     50% { box-shadow: 0 0 0 3px rgba(128,128,128,0.12); }
+  }
+
+  // ── UI Scale Segmented Picker ──
+  .scale-selector {
+    display: flex;
+    align-items: center;
+    background: rgba(128, 128, 128, 0.08);
+    border: 1px solid rgba(128, 128, 128, 0.14);
+    border-radius: 7px;
+    padding: 2px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .scale-btn {
+    font-family: $font-family-base;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--color-text);
+    opacity: 0.5;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 3px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.18s ease;
+    line-height: 1.4;
+
+    &:hover {
+      opacity: 0.8;
+      background: rgba(128, 128, 128, 0.1);
+    }
+
+    &.active {
+      background: var(--color-accent, #6B7280);
+      color: var(--color-accent-text, #ffffff);
+      opacity: 1;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+    }
   }
 </style>

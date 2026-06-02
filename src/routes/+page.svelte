@@ -485,6 +485,16 @@
     // Load sound preference from localStorage
     loadSoundPreference();
     
+    // Load UI scale preference from localStorage
+    const savedScale = localStorage.getItem('uiScale');
+    if (savedScale) {
+      const scaleMap: Record<string, string> = { small: '1', medium: '1.15', large: '1.30' };
+      const scaleValue = scaleMap[savedScale];
+      if (scaleValue) {
+        document.documentElement.style.setProperty('--ui-scale', scaleValue);
+      }
+    }
+    
     // Xin quyền gửi thông báo khi khởi động app
     await requestNotificationPermission();
 
@@ -617,6 +627,15 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   async function toggleCollapse() {
     playCollapse();
     const appWindow = getCurrentWindow();
+
+    // Read live UI scale so OS window dimensions match zoomed content
+    const uiScale = parseFloat(
+      document.documentElement.style.getPropertyValue('--ui-scale') ||
+      getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')
+    ) || 1;
+    const collapsedH  = Math.round(50  * uiScale);
+    const minExpandH  = Math.round(249 * uiScale);
+    const minW        = Math.round(356 * uiScale);
     
     if (!isCollapsed) {
       // 1. Calculate current size
@@ -625,7 +644,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       const w = size.width / scale;
       const h = size.height / scale;
       
-      if (h > 60) {
+      if (h > collapsedH + 10) {
         previousSize = { width: w, height: h };
       } else {
         previousSize.width = w;
@@ -635,21 +654,21 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       isCollapsed = true;
       
       // 2. Shrink OS window instantly
-      await appWindow.setMinSize(new LogicalSize(356, 50));
-      await appWindow.setSize(new LogicalSize(previousSize.width, 50));
-      await appWindow.setMaxSize(new LogicalSize(9999, 50));
+      await appWindow.setMinSize(new LogicalSize(minW, collapsedH));
+      await appWindow.setSize(new LogicalSize(previousSize.width, collapsedH));
+      await appWindow.setMaxSize(new LogicalSize(9999, collapsedH));
     } else {
       // 1. Prepare to expand: remove max constraints first
       await appWindow.setMaxSize(new LogicalSize(9999, 9999));
       
       const widthToRestore = previousSize.width;
-      const targetHeight = Math.max(249, previousSize.height);
+      const targetHeight = Math.max(minExpandH, previousSize.height);
       
       isCollapsed = false;
 
       // 2. Expand OS window instantly
       await appWindow.setSize(new LogicalSize(widthToRestore, targetHeight));
-      await appWindow.setMinSize(new LogicalSize(356, 249));
+      await appWindow.setMinSize(new LogicalSize(minW, minExpandH));
     }
   }
 
@@ -805,10 +824,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
         <!-- Editor Fade Overlay (Solid color with mask, transitions perfectly with glass-widget) -->
         <div class="editor-fade-overlay" style="background-color: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'};"></div>
 
-        <!-- Timer row -->
-        <div class="timer-row delay-5">
-          <TimerWidget onComplete={handleTimerComplete} />
-        </div>
+        <!-- Timer row (hidden when settings panel is open) -->
+        {#if !isSettingsOpen}
+          <div class="timer-row delay-5">
+            <TimerWidget onComplete={handleTimerComplete} />
+          </div>
+        {/if}
       {/if}
     </div>
 
@@ -939,12 +960,6 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       </div>
     {/if}
 
-    {#if isDotDragging}
-      <svg class="drag-overlay">
-        <line x1={dotStartX} y1={dotStartY} x2={currentPointerX} y2={currentPointerY} class="drag-line" />
-        <circle cx={currentPointerX} cy={currentPointerY} r="5" class="drag-pointer" />
-      </svg>
-    {/if}
 
     <!-- Settings Panel -->
     {#if isSettingsOpen}
@@ -952,6 +967,15 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     {/if}
   </div>
 </main>
+
+<!-- Drag overlay: must be OUTSIDE .glass-widget (which has CSS zoom) so that
+     pointer clientX/Y coordinates match the SVG coordinate space exactly -->
+{#if isDotDragging}
+  <svg class="drag-overlay">
+    <line x1={dotStartX} y1={dotStartY} x2={currentPointerX} y2={currentPointerY} class="drag-line" />
+    <circle cx={currentPointerX} cy={currentPointerY} r="5" class="drag-pointer" />
+  </svg>
+{/if}
 
 <Lightbox />
 
@@ -980,6 +1004,8 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     overflow: clip;
     box-sizing: border-box;
     animation: fade-in 0.3s ease-out;
+    /* UI Scale zoom — scales all contents (text, icons, padding) uniformly */
+    zoom: var(--ui-scale, 1);
 
     &.collapsed {
       // Padding is kept the same as expanded mode to prevent layout jump
@@ -1181,6 +1207,18 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     cursor: pointer;
     transition: background 0.2s ease;
     z-index: 20; // Above overlay menu
+
+    // Invisible pseudo-element to expand hit target area for easy touch/drag
+    &::after {
+      content: '';
+      position: absolute;
+      top: -15px;
+      left: -15px;
+      right: -15px;
+      bottom: -15px;
+      border-radius: 50%;
+      background: transparent;
+    }
 
     &:hover {
       background: $color-accent;
