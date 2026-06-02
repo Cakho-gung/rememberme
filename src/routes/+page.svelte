@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
-  import { fade } from 'svelte/transition';
+  import { fade, slide } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
   import { onMount, tick } from 'svelte';
   import Editor from '$lib/components/Editor.svelte';
   import Lightbox from '$lib/components/Lightbox.svelte';
@@ -18,6 +19,7 @@
   let isEditingTitle = $state(false);
   let titleEditValue = $state('');
   let isSettingsOpen = $state(false);
+  let focusAnimationEnabled = $state(true);
 
   function focus(node: HTMLElement) {
     node.focus();
@@ -45,6 +47,7 @@
 
   function closeSettings() {
     isSettingsOpen = false;
+    focusAnimationEnabled = localStorage.getItem('focusAnimationEnabled') !== 'false';
   }
 
   async function startDragging(e: PointerEvent) {
@@ -53,7 +56,7 @@
     
     // Do not drag if clicking on interactive elements
     const target = e.target as HTMLElement;
-    if (target.closest('button, input, textarea, .text-editor, .dropdown-item, .title-text-btn, .close-dot, .ProseMirror, .toolbar')) {
+    if (target.closest('button, input, textarea, .text-editor, .dropdown-item, .drag-handle, .title-text-btn, .close-dot, .ProseMirror, .toolbar')) {
       return;
     }
     
@@ -173,6 +176,9 @@
   let currentPointerX = $state(0);
   let currentPointerY = $state(0);
   let hoveredToolAction = $state<string | null>(null);
+  let headings = $state<{ text: string; level: number; element: HTMLElement; id: string }[]>([]);
+  let hoveredHeadingId = $state<string | null>(null);
+  let editorInstance = $state<any>(null);
 
   function cleanupDotDragging(target: HTMLElement, pointerId: number) {
     target.removeEventListener('pointermove', onDotPointerMove);
@@ -192,6 +198,7 @@
     
     isDotDragging = false;
     hoveredToolAction = null;
+    hoveredHeadingId = null;
     isMenuOpen = false;
     isAccentMenuOpen = false;
   }
@@ -208,6 +215,7 @@
       isWindowFocused = false;
       isDotDragging = false;
       hoveredToolAction = null;
+      hoveredHeadingId = null;
       isMenuOpen = false;
       isAccentMenuOpen = false;
     }, 300);
@@ -255,40 +263,6 @@
         await toggleCollapse();
         return;
       }
-      
-      if (['w', 'a', 's', 'd'].includes(key)) {
-        e.preventDefault();
-        const appWindow = getCurrentWindow();
-        const monitor = await appWindow.currentMonitor();
-        if (!monitor) return;
-        
-        const scaleFactor = monitor.scaleFactor;
-        
-        const workAreaWidth = monitor.workArea.size.width / scaleFactor;
-        const workAreaHeight = monitor.workArea.size.height / scaleFactor;
-        const workAreaX = monitor.workArea.position.x / scaleFactor;
-        const workAreaY = monitor.workArea.position.y / scaleFactor;
-        
-        const size = await appWindow.outerSize();
-        const windowWidth = size.width / scaleFactor;
-        const windowHeight = size.height / scaleFactor;
-        
-        const currentPos = await appWindow.outerPosition();
-        let newX = currentPos.x / scaleFactor;
-        let newY = currentPos.y / scaleFactor;
-        
-        if (key === 'w') {
-          newY = workAreaY;
-        } else if (key === 's') {
-          newY = workAreaY + workAreaHeight - windowHeight;
-        } else if (key === 'a') {
-          newX = workAreaX;
-        } else if (key === 'd') {
-          newX = workAreaX + workAreaWidth - windowWidth;
-        }
-        
-        await appWindow.setOuterPosition(new LogicalPosition(newX, newY));
-      }
     }
   }
 
@@ -305,7 +279,9 @@
     }
     
     if (isDropdownOpen && !isCollapsed) {
-      if (!target.closest('.title-section')) {
+      // Keep dropdown open if pointer is inside title-section or dropdown-list
+      // (the latter covers drag-handle grabs which bubble out of .title-section)
+      if (!target.closest('.title-section') && !target.closest('.dropdown-list')) {
         isDropdownOpen = false;
       }
     }
@@ -348,11 +324,15 @@
       const toolBtn = el?.closest('.tool-btn') as HTMLElement;
       const newAction = toolBtn && toolBtn.dataset.action ? toolBtn.dataset.action : null;
       
-      if (newAction && newAction !== hoveredToolAction) {
+      const tocItem = el?.closest('.toc-item') as HTMLElement;
+      const newHeadingId = tocItem && tocItem.dataset.id ? tocItem.dataset.id : null;
+      
+      if ((newAction && newAction !== hoveredToolAction) || (newHeadingId && newHeadingId !== hoveredHeadingId)) {
         playHover();
       }
       
       hoveredToolAction = newAction;
+      hoveredHeadingId = newHeadingId;
     }
   }
 
@@ -363,7 +343,9 @@
     if (isDotDragging) {
       isDotDragging = false;
       const action = hoveredToolAction;
+      const headingId = hoveredHeadingId;
       hoveredToolAction = null;
+      hoveredHeadingId = null;
       
       if (action) {
         if (action === 'create') createNewNote();
@@ -375,9 +357,16 @@
         else if (action === 'exit') closeApp();
         else if (action === 'theme') toggleTheme();
         else if (action === 'accent') toggleAccentMenu();
-      }
-      
-      if (action !== 'accent') {
+        
+        if (action !== 'accent') {
+          isMenuOpen = false;
+        }
+      } else if (headingId) {
+        const found = headings.find(h => h.id === headingId);
+        if (found) {
+          scrollToHeading(found);
+        }
+      } else {
         isMenuOpen = false;
       }
     }
@@ -446,6 +435,120 @@
   let saveIndexTimeout: ReturnType<typeof setTimeout>;
   let saveContentTimeout: ReturnType<typeof setTimeout>;
 
+  // ── Pointer-based Drag-and-Drop for Dropdown Note Sorting ──
+  // Using Pointer Events instead of HTML5 DragEvent API because Tauri/WebView2
+  // on Windows intercepts mousedown at OS level for frameless window dragging,
+  // which kills dragstart before it can fire reliably.
+  let draggingNoteId = $state<number | null>(null);
+  let hoveredNoteId = $state<number | null>(null);
+  let dropPosition = $state<'top' | 'bottom'>('top');
+
+  // Derived notes for the dropdown (reversed so newest appears at top)
+  let dropdownNotes = $derived(
+    [...mockNotes]
+      .reverse()
+      .filter(n => !n.archived)
+  );
+
+  // Internal drag state (not reactive, no need for $state)
+  let _dragPointerId: number | null = null;
+  let _dragStartX = 0;
+  let _dragStartY = 0;
+  let _dragActive = false; // true once we've crossed the move threshold
+
+  function reorderNotes(draggedId: number, targetId: number, position: 'top' | 'bottom') {
+    if (draggedId === targetId) return;
+    const draggedVisualIndex = dropdownNotes.findIndex(n => n.id === draggedId);
+    const targetVisualIndex  = dropdownNotes.findIndex(n => n.id === targetId);
+    if (draggedVisualIndex === -1 || targetVisualIndex === -1) return;
+
+    let newDropdown = [...dropdownNotes];
+    const dIndex = newDropdown.findIndex(n => n.id === draggedId);
+    const [draggedNote] = newDropdown.splice(dIndex, 1);
+    const tIndex = newDropdown.findIndex(n => n.id === targetId);
+    const insertIndex = position === 'bottom' ? tIndex + 1 : tIndex;
+    newDropdown.splice(insertIndex, 0, draggedNote);
+
+    // Map the new visual order back to mockNotes (non-archived slots)
+    const newOrderAscending = [...newDropdown].reverse();
+    let idx = 0;
+    for (let i = 0; i < mockNotes.length; i++) {
+      if (!mockNotes[i].archived) {
+        mockNotes[i] = newOrderAscending[idx++];
+      }
+    }
+    scheduleSaveIndex();
+  }
+
+  function onDragHandlePointerDown(e: PointerEvent, id: number) {
+    if (e.button !== 0) return;
+    e.stopPropagation(); // Prevent title-row / window drag from capturing
+    e.preventDefault();  // Prevent text selection during drag
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture(e.pointerId);
+
+    _dragPointerId = e.pointerId;
+    _dragStartX = e.clientX;
+    _dragStartY = e.clientY;
+    _dragActive = false;
+    // Do NOT set draggingNoteId here — wait for threshold so clicks don't flicker
+  }
+
+  function onDragHandlePointerMove(e: PointerEvent, id: number) {
+    if (_dragPointerId !== e.pointerId) return;
+
+    const dx = Math.abs(e.clientX - _dragStartX);
+    const dy = Math.abs(e.clientY - _dragStartY);
+    if (!_dragActive && (dx > 4 || dy > 4)) {
+      _dragActive = true;
+      draggingNoteId = id; // only dim the item once drag threshold is crossed
+    }
+    if (!_dragActive) return;
+
+    // Find which dropdown-item the pointer is currently over
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const targetItem = el?.closest('.dropdown-item') as HTMLElement | null;
+    if (!targetItem) {
+      hoveredNoteId = null;
+      return;
+    }
+
+    const targetIdAttr = targetItem.dataset.noteId;
+    if (!targetIdAttr) return;
+    const targetId = parseInt(targetIdAttr);
+    if (targetId === id) {
+      hoveredNoteId = null;
+      return;
+    }
+
+    hoveredNoteId = targetId;
+    const rect = targetItem.getBoundingClientRect();
+    dropPosition = e.clientY < rect.top + rect.height / 2 ? 'top' : 'bottom';
+  }
+
+  function onDragHandlePointerUp(e: PointerEvent, id: number) {
+    if (_dragPointerId !== e.pointerId) return;
+    const handle = e.currentTarget as HTMLElement;
+    try { handle.releasePointerCapture(e.pointerId); } catch {}
+
+    if (_dragActive && hoveredNoteId !== null) {
+      reorderNotes(id, hoveredNoteId, dropPosition);
+    }
+
+    // Reset
+    draggingNoteId = null;
+    hoveredNoteId = null;
+    _dragPointerId = null;
+    _dragActive = false;
+  }
+
+  function onDragHandlePointerCancel(e: PointerEvent) {
+    draggingNoteId = null;
+    hoveredNoteId = null;
+    _dragPointerId = null;
+    _dragActive = false;
+  }
+
   function scheduleSaveIndex() {
     clearTimeout(saveIndexTimeout);
     saveIndexTimeout = setTimeout(() => {
@@ -484,6 +587,9 @@
     
     // Load sound preference from localStorage
     loadSoundPreference();
+
+    // Load Focus Animation setting from localStorage
+    focusAnimationEnabled = localStorage.getItem('focusAnimationEnabled') !== 'false';
     
     // Load UI scale preference from localStorage
     const savedScale = localStorage.getItem('uiScale');
@@ -583,6 +689,88 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     if (note && note.content === null) {
       note.content = await loadNoteContent(id);
     }
+  }
+
+  // Selector dùng chung để query headings
+  const HEADING_SELECTOR =
+    '#note-scroll-area .ProseMirror h1, ' +
+    '#note-scroll-area .ProseMirror h2, ' +
+    '#note-scroll-area .ProseMirror h3, ' +
+    '#note-scroll-area .ProseMirror h4, ' +
+    '#note-scroll-area .ProseMirror h5, ' +
+    '#note-scroll-area .ProseMirror h6';
+
+  function updateHeadings() {
+    if (isCollapsed) {
+      headings = [];
+      return;
+    }
+    const elements = document.querySelectorAll(HEADING_SELECTOR);
+    headings = Array.from(elements).map((el, index) => {
+      const htmlEl = el as HTMLElement;
+      return {
+        text: htmlEl.innerText || htmlEl.textContent || '',
+        level: parseInt(htmlEl.tagName.substring(1)),
+        element: htmlEl,
+        id: String(index)   // lưu index thay vì inject id vào DOM
+      };
+    });
+  }
+
+  $effect(() => {
+    if (isMenuOpen) {
+      tick().then(() => {
+        updateHeadings();
+      });
+    }
+  });
+
+  function scrollToHeading(heading: { id: string; element: HTMLElement }) {
+    // lưu index (heading.id là string của số index)
+    const headingIndex = parseInt(heading.id);
+
+    // Đóng menu trước
+    isMenuOpen = false;
+
+    // Đợi menu fade-out (150ms) + DOM ổn định
+    setTimeout(async () => {
+      await tick();
+
+      // Re-query tất cả headings sau khi DOM ổn định (ProseMirror đã re-render xong)
+      const allHeadings = Array.from(document.querySelectorAll(HEADING_SELECTOR));
+      const targetEl = allHeadings[headingIndex] as HTMLElement | undefined;
+
+      console.log('[TOC] scrollToHeading', { headingIndex, totalHeadings: allHeadings.length, targetEl, found: !!targetEl });
+
+      if (!targetEl) {
+        console.warn('[TOC] Heading not found at index:', headingIndex);
+        return;
+      }
+
+      // Tìm scrollable container bằng id duy nhất
+      const scrollContainer = document.getElementById('note-scroll-area') as HTMLElement | null;
+
+      console.log('[TOC] scrollContainer', !!scrollContainer, 'scrollTop', scrollContainer?.scrollTop, 'clientHeight', scrollContainer?.clientHeight);
+
+      if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const elRect = targetEl.getBoundingClientRect();
+        // Vị trí tuyệt đối của element trong scrollContainer
+        const relativeTop = elRect.top - containerRect.top + scrollContainer.scrollTop;
+        // Đặt heading vào vị trí ~20% từ trên xuống
+        const targetScrollTop = Math.max(0, relativeTop - scrollContainer.clientHeight * 0.2);
+
+        console.log('[TOC] Scrolling to', targetScrollTop, '(relativeTop:', relativeTop, ')');
+        scrollContainer.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+      } else {
+        console.warn('[TOC] No #note-scroll-area found, using scrollIntoView fallback');
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // Highlight pulse
+      targetEl.classList.add('highlight-pulse');
+      setTimeout(() => targetEl.classList.remove('highlight-pulse'), 1500);
+    }, 160);
   }
 
   // Smart Drag vs Click handling
@@ -699,11 +887,11 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<main class="app-container" onpointerdown={startDragging}>
+<main class="app-container">
   <AnimatedGradientBorder 
     glowWidth="15vmin"
     blur="15vmin"
-    isFocused={isWindowFocused || isTimerAlerting}
+    isFocused={(isWindowFocused && focusAnimationEnabled) || isTimerAlerting}
     forceVisible={isTimerAlerting}
     style="border-radius: 25vmin; scale: 1.6 1.4;"
   />
@@ -720,6 +908,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="title-section {isDropdownOpen ? 'expanded' : ''}">
         <!-- First title row (visible) -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- Note: NO onpointerdown=startDragging here — it would intercept HTML5 drag events
+             from dropdown-items. Window dragging is handled inside each child that needs it. -->
         <div class="title-row">
           <!-- Title text (draggable button when not editing, input when editing) -->
           {#if isEditingTitle}
@@ -756,27 +947,58 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
         <!-- Dropdown Notes List -->
         {#if isDropdownOpen && !isCollapsed}
-          {#each [...mockNotes].reverse() as note}
-            {#if note.id !== activeNoteId && !note.archived}
-              <div class="dropdown-divider"></div>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div 
+            class="dropdown-list" 
+            transition:slide={{ duration: 200 }}
+          >
+            {#each dropdownNotes as note (note.id)}
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div class="dropdown-item" onclick={() => selectNote(note.id)}>
+              <div 
+                class="dropdown-item" 
+                class:dragging={draggingNoteId === note.id}
+                class:drop-target-top={hoveredNoteId === note.id && dropPosition === 'top'}
+                class:drop-target-bottom={hoveredNoteId === note.id && dropPosition === 'bottom'}
+                data-note-id={note.id}
+                onclick={() => selectNote(note.id)}
+                animate:flip={{ duration: 150 }}
+              >
+                <!-- Drag Handle — pointer events for drag-to-reorder (Pointer Events API, not HTML5 drag) -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div 
+                  class="drag-handle" 
+                  aria-label="Drag to reorder"
+                  onpointerdown={(e) => onDragHandlePointerDown(e, note.id)}
+                  onpointermove={(e) => onDragHandlePointerMove(e, note.id)}
+                  onpointerup={(e) => onDragHandlePointerUp(e, note.id)}
+                  onpointercancel={onDragHandlePointerCancel}
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="5" cy="3" r="1.5"/>
+                    <circle cx="11" cy="3" r="1.5"/>
+                    <circle cx="5" cy="8" r="1.5"/>
+                    <circle cx="11" cy="8" r="1.5"/>
+                    <circle cx="5" cy="13" r="1.5"/>
+                    <circle cx="11" cy="13" r="1.5"/>
+                  </svg>
+                </div>
+
+                <span class="item-text" class:active={note.id === activeNoteId}>{note.title || 'Untitled Note'}</span>
                 <button class="archive-item-btn" onclick={(e) => archiveNoteById(e, note.id)} aria-label="Archive Note">
                   <svg class="item-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12.8333 5.83301H3.16626V12.667C3.16635 12.8878 3.2543 13.0997 3.4104 13.2559C3.56668 13.4121 3.77923 13.5 4.00024 13.5H12.0002C12.2211 13.4999 12.4329 13.4121 12.5891 13.2559C12.7453 13.0997 12.8332 12.8879 12.8333 12.667V5.83301ZM9.33325 7.5C9.60939 7.5 9.83325 7.72386 9.83325 8C9.83325 8.27614 9.60939 8.5 9.33325 8.5H6.66626C6.39027 8.49982 6.16626 8.27603 6.16626 8C6.16626 7.72397 6.39027 7.50018 6.66626 7.5H9.33325ZM14.1663 2.66699C14.1663 2.57505 14.0921 2.50018 14.0002 2.5H2.00024C1.9082 2.5 1.83325 2.57494 1.83325 2.66699V4.66699C1.83343 4.75889 1.90831 4.83301 2.00024 4.83301H14.0002C14.092 4.83283 14.1661 4.75878 14.1663 4.66699V2.66699ZM15.1663 4.66699C15.1661 5.31107 14.6443 5.83283 14.0002 5.83301H13.8333V12.667C13.8332 13.1531 13.6399 13.6192 13.2961 13.9629C12.9524 14.3066 12.4864 14.4999 12.0002 14.5H4.00024C3.51401 14.5 3.04719 14.3067 2.70337 13.9629C2.35973 13.6192 2.16635 13.153 2.16626 12.667V5.83301H2.00024C1.35602 5.83301 0.833428 5.31117 0.833252 4.66699V2.66699C0.833252 2.02266 1.35591 1.5 2.00024 1.5H14.0002C14.6444 1.50018 15.1663 2.02277 15.1663 2.66699V4.66699Z" fill="currentColor"/>
                   </svg>
                 </button>
-                <span class="item-text">{note.title}</span>
               </div>
-            {/if}
-          {/each}
+            {/each}
+          </div>
         {/if}
       </div>
 
       {#if !isCollapsed}
         <!-- Text editor area -->
-        <div class="text-editor">
+        <div class="text-editor" id="note-scroll-area">
           {#if isTrashOpen}
             <div class="trash-view" transition:fade={{ duration: 150 }}>
               <div class="trash-header">
@@ -805,6 +1027,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             <Editor 
               noteId={activeNote.id}
               content={activeNote.content}
+              bind:editor={editorInstance}
               onUpdate={(content) => {
                 if (activeNote) {
                   activeNote.content = content;
@@ -816,15 +1039,13 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
         </div>
 
         <!-- Editor Fade Overlay (Solid color with mask, transitions perfectly with glass-widget) -->
-        <div class="editor-fade-overlay" style="background-color: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'};"></div>
-
-        <!-- Timer row (hidden when settings panel is open) -->
-        {#if !isSettingsOpen}
-          <div class="timer-row delay-5">
-            <TimerWidget onComplete={handleTimerComplete} />
-          </div>
-        {/if}
+        <div class="editor-fade-overlay" style="background-color: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'}"></div>
       {/if}
+
+      <!-- Timer row: luôn mount để tránh reset timer khi collapse. Ẩn bằng CSS khi cần. -->
+      <div class="timer-row delay-5" class:timer-hidden={isCollapsed || isSettingsOpen}>
+        <TimerWidget onComplete={handleTimerComplete} />
+      </div>
     </div>
 
     <!-- Menu dot: absolute top-right (hidden when settings panel is open) -->
@@ -931,6 +1152,30 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           </svg>
         </button>
 
+        <!-- Table of Contents -->
+        {#if !isAccentMenuOpen}
+          <div class="toc-container" transition:fade={{ duration: 150 }}>
+            <div class="toc-title">Table of content</div>
+            <div class="toc-list">
+              {#each headings as heading}
+                <button 
+                  class="toc-item level-{heading.level}" 
+                  class:drag-hover={hoveredHeadingId === heading.id}
+                  data-id={heading.id}
+                  onclick={() => {
+                    scrollToHeading(heading);
+                  }}
+                >
+                  <span class="toc-bullet">•</span>
+                  <span class="toc-text">{heading.text}</span>
+                </button>
+              {:else}
+                <div class="toc-empty">Không tìm thấy tiêu đề trong ghi chú này</div>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
         <!-- Accent Menu Bubble -->
         {#if isAccentMenuOpen}
           <div class="accent-menu" transition:fade={{ duration: 150 }}>
@@ -1028,17 +1273,13 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     display: flex;
     flex-direction: column;
     gap: 6px;
-    height: 24px;
-    overflow: hidden;
+    overflow: visible; // Must NOT be hidden — clips drag ghost + blocks drag targets at boundary
     flex-shrink: 0;
     width: 100%;
     cursor: default;
     user-select: none;
-    transition: height 0.2s ease;
-
-    &.expanded {
-      height: auto;
-    }
+    position: relative;
+    z-index: 10;
   }
 
   .title-row {
@@ -1129,21 +1370,29 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     }
   }
 
-  // ── Dropdown Menu ──
-  .dropdown-divider {
-    height: 1px;
-    background-color: var(--dropdown-divider-bg, rgba(0, 0, 0, 0.1));
-    margin: 0;
+  .dropdown-list {
+    display: flex;
+    flex-direction: column;
     width: 100%;
+    max-height: max(50vh, 200px);
+    overflow-y: auto;
+    padding-bottom: 16px;
+
+    // Hide scrollbar
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   .dropdown-item {
     background: transparent;
     border: none;
-    padding-top: 2px;
-    padding-bottom: 2px;
+    border-top: 1px solid var(--dropdown-divider-bg, rgba(0, 0, 0, 0.1));
+    padding-top: 8px;
+    padding-bottom: 8px;
     padding-left: 6px;
-    padding-right: 32px;
+    padding-right: 6px;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -1153,9 +1402,75 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     color: $color-text;
     opacity: 0.8;
     transition: all 0.2s ease;
+    user-select: none;
+    position: relative;
+
+    &:first-child {
+      border-top: none;
+    }
     
     &:hover {
       opacity: 1;
+      background: rgba(128, 128, 128, 0.04);
+    }
+
+    &.dragging {
+      opacity: 0.3;
+      background: rgba(128, 128, 128, 0.08);
+      border-radius: 4px;
+    }
+
+    &.drop-target-top {
+      background: rgba(128, 128, 128, 0.04);
+      &::before {
+        content: '';
+        position: absolute;
+        top: -1px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background-color: var(--color-accent);
+        z-index: 10;
+        pointer-events: none;
+        box-shadow: 0 0 4px var(--color-accent);
+      }
+    }
+
+    &.drop-target-bottom {
+      background: rgba(128, 128, 128, 0.04);
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background-color: var(--color-accent);
+        z-index: 10;
+        pointer-events: none;
+        box-shadow: 0 0 4px var(--color-accent);
+      }
+    }
+  }
+
+  .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 2px;
+    cursor: grab;
+    color: $color-text;
+    opacity: 0.25;
+    transition: opacity 0.2s ease;
+    margin-right: 2px;
+    touch-action: none; // Required for Pointer Events to fire on touch/stylus without scroll interference
+
+    &:hover {
+      opacity: 0.6;
+    }
+
+    &:active {
+      cursor: grabbing;
     }
   }
 
@@ -1184,6 +1499,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   }
 
   .item-text {
+    flex: 1 1 0;
     font-family: $font-family-mono;
     font-size: 12px;
     font-weight: 400;
@@ -1192,6 +1508,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+
+    &.active {
+      font-weight: 700;
+    }
   }
 
   // ── Close Dot ──
@@ -1239,11 +1559,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     inset: -1px;
     z-index: 10;
     border-radius: 12px;
-    background-color: var(--bg-focused);
-    background-filter: blur(10px);
+    background-color: color-mix(in srgb, var(--bg-focused) 70%, transparent);
     backdrop-filter: blur(10px);
-    mask-image: linear-gradient(180deg, black 15%, rgba(0, 0, 0, 0.4) 80%);
-    -webkit-mask-image: linear-gradient(180deg, black 15%, rgba(0, 0, 0, 0.4) 80%);
+    -webkit-backdrop-filter: blur(10px);
     pointer-events: none; // let clicks pass through background
     animation: fade-in 0.2s ease-out forwards;
   }
@@ -1592,6 +1910,11 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     justify-content: flex-end;
     flex-shrink: 0;
     width: 100%;
+
+    // Ẩn bằng CSS thay vì unmount — giữ nguyên state đếm giờ
+    &.timer-hidden {
+      display: none;
+    }
   }
 
   .timer-btn {
@@ -1617,6 +1940,147 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     &:active {
       opacity: 1;
     }
+  }
+
+  // ── Table of Contents ──
+  .toc-container {
+    position: absolute;
+    top: 68px;
+    left: 64px;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
+    z-index: 20;
+    max-height: calc(100% - 84px);
+  }
+
+  .toc-title {
+    font-family: $font-family-mono;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: $color-text;
+    opacity: 0.4;
+    margin-bottom: 8px;
+    padding-left: 8px;
+  }
+
+  .toc-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    flex: 1;
+    padding-right: 4px;
+
+    // Custom scrollbar
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, $color-accent 20%, transparent) transparent;
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: color-mix(in srgb, $color-accent 20%, transparent);
+      border-radius: 2px;
+    }
+  }
+
+  .toc-item {
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    cursor: pointer;
+    text-align: left;
+    color: $color-text;
+    opacity: 0.7;
+    transition: all 0.2s ease;
+    border-left: 2px solid transparent;
+    min-width: 0;
+
+    .toc-bullet {
+      opacity: 0.5;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
+    .toc-text {
+      font-family: $font-family-base;
+      font-size: 13px;
+      font-weight: 400;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    &.level-1 {
+      padding-left: 8px;
+      .toc-text { font-weight: 600; }
+    }
+    &.level-2 {
+      padding-left: 20px;
+      .toc-bullet { opacity: 0.3; }
+    }
+    &.level-3 {
+      padding-left: 32px;
+      .toc-bullet { opacity: 0.2; }
+      .toc-text { font-size: 12px; }
+    }
+    &.level-4, &.level-5, &.level-6 {
+      padding-left: 44px;
+      .toc-bullet { display: none; }
+      .toc-text { font-size: 11px; opacity: 0.8; }
+    }
+
+    &:hover, &.drag-hover {
+      opacity: 1;
+      background: rgba(128, 128, 128, 0.08);
+      border-left: 2px solid $color-accent;
+      color: $color-accent;
+    }
+
+    &.level-1:hover, &.level-1.drag-hover { padding-left: 12px; }
+    &.level-2:hover, &.level-2.drag-hover { padding-left: 24px; }
+    &.level-3:hover, &.level-3.drag-hover { padding-left: 36px; }
+    &.level-4:hover, &.level-4.drag-hover,
+    &.level-5:hover, &.level-5.drag-hover,
+    &.level-6:hover, &.level-6.drag-hover { padding-left: 48px; }
+  }
+
+  .toc-empty {
+    font-family: $font-family-base;
+    font-size: 12px;
+    color: $color-text;
+    opacity: 0.4;
+    padding: 12px 8px;
+    font-style: italic;
+  }
+
+  @keyframes heading-pulse {
+    0% {
+      background-color: color-mix(in srgb, $color-accent 25%, transparent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, $color-accent 25%, transparent);
+      border-radius: 4px;
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: 0 0 0 4px transparent;
+    }
+  }
+
+  :global(.highlight-pulse) {
+    animation: heading-pulse 1.5s ease-out;
   }
 
   // ── Drag Visuals ──

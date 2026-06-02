@@ -37,30 +37,23 @@
       key: 'F',
     },
     {
-      id: 'snap-top',
-      label: 'Snap Up',
-      description: 'Move the window to the top edge',
-      modifiers: ['Alt'],
-      key: 'W',
-    },
-    {
-      id: 'snap-bottom',
-      label: 'Snap Down',
-      description: 'Move the window to the bottom edge',
-      modifiers: ['Alt'],
-      key: 'S',
-    },
-    {
-      id: 'snap-left',
-      label: 'Snap Left',
-      description: 'Move the window to the left edge',
+      id: 'align-left',
+      label: 'Align Left',
+      description: 'Align text or float image to left',
       modifiers: ['Alt'],
       key: 'A',
     },
     {
-      id: 'snap-right',
-      label: 'Snap Right',
-      description: 'Move the window to the right edge',
+      id: 'align-center',
+      label: 'Align Center',
+      description: 'Align text to center or reset image float',
+      modifiers: ['Alt'],
+      key: 'H',
+    },
+    {
+      id: 'align-right',
+      label: 'Align Right',
+      description: 'Align text or float image to right',
       modifiers: ['Alt'],
       key: 'D',
     },
@@ -175,6 +168,14 @@
     currentTimerPreset = preset;
     localStorage.setItem('timerPreset', preset);
   }
+
+  // ── Focus Animation ──
+  let focusAnimationEnabled = $state(localStorage.getItem('focusAnimationEnabled') !== 'false');
+
+  function toggleFocusAnimation() {
+    focusAnimationEnabled = !focusAnimationEnabled;
+    localStorage.setItem('focusAnimationEnabled', focusAnimationEnabled.toString());
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -184,6 +185,7 @@
   onkeydown={onKeyDownRecorder}
   role="dialog"
   aria-label="Settings"
+  tabindex="-1"
 >
   <!-- Header -->
   <div class="settings-header">
@@ -236,7 +238,7 @@
 
     <div class="section-divider"></div>
 
-    <!-- ── Section 2: UI Scale ── -->
+    <!-- ── Section 2: UI ── -->
     <div class="settings-section">
       <button class="section-header" onclick={() => uiScaleOpen = !uiScaleOpen} aria-expanded={uiScaleOpen}>
         <div class="section-header-left">
@@ -246,13 +248,13 @@
             <line x1="21" y1="3" x2="14" y2="10"></line>
             <line x1="3" y1="21" x2="10" y2="14"></line>
           </svg>
-          <span>UI Scale</span>
+          <span>UI</span>
         </div>
         <svg class="chevron {uiScaleOpen ? 'open' : ''}" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <path d="M7.18963 10.5875C7.43137 10.8142 7.81065 10.8019 8.03729 10.5602L12.0373 6.31016C12.2639 6.06841 12.2517 5.68914 12.0099 5.4625C11.7682 5.23586 11.3889 5.24809 11.1623 5.48984L7.57246 9.35584L3.98263 5.48984C3.75599 5.24809 3.37672 5.23586 3.13497 5.4625C2.89322 5.68914 2.88099 6.06841 3.10763 6.31016L7.10763 10.5602L7.18963 10.5875Z"/>
         </svg>
       </button>
-
+ 
       {#if uiScaleOpen}
         <div class="section-body" transition:fly={{ y: -4, duration: 150 }}>
           <div class="setting-row">
@@ -272,6 +274,23 @@
                 </button>
               {/each}
             </div>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Focus Animation</span>
+              <span class="setting-desc">Animate gradient border on app focus.</span>
+            </div>
+            <!-- Toggle Switch -->
+            <button
+              class="toggle-switch {focusAnimationEnabled ? 'on' : 'off'}"
+              onclick={toggleFocusAnimation}
+              role="switch"
+              aria-checked={focusAnimationEnabled}
+              aria-label="Toggle focus animation"
+            >
+              <span class="toggle-thumb"></span>
+            </button>
           </div>
         </div>
       {/if}
@@ -446,8 +465,7 @@
 
   .section-divider {
     height: 1px;
-    background: var(--dropdown-divider-bg, rgba(0,0,0,0.07));
-    margin: 4px 14px;
+    background: var(--dropdown-divider-bg, rgba(0,0,0,0.01));
     flex-shrink: 0;
   }
 
@@ -461,7 +479,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 14px;
+    padding: 16px 14px;
     background: transparent;
     border: none;
     cursor: pointer;
