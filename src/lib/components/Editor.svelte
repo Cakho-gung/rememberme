@@ -19,9 +19,7 @@
 	import TextAlign from '@tiptap/extension-text-align';
 	import { MathExtension } from '@aarkue/tiptap-math-extension';
 	import { fade } from 'svelte/transition';
-	import Details from '@tiptap/extension-details';
-	import DetailsSummary from '@tiptap/extension-details-summary';
-	import DetailsContent from '@tiptap/extension-details-content';
+	import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
 	
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { readFile } from '@tauri-apps/plugin-fs';
