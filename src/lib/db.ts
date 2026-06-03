@@ -5,6 +5,7 @@ import {
   mkdir,
   BaseDirectory,
   readDir,
+  remove,
 } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 

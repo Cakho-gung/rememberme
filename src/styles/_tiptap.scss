@@ -218,14 +218,34 @@
 
 	/* Link Styling */
 	a {
-		color: #3182ce;
-		text-decoration: underline;
+		color: $color-accent;
+		text-decoration: none;
+		font-weight: 500;
 		text-underline-offset: 3px;
 		cursor: pointer;
 		transition: color 0.15s ease;
 		
+		&::before {
+			content: '';
+			display: inline-block;
+			width: 1em;
+			height: 1em;
+			vertical-align: -0.15em;
+			margin-right: 0.2em;
+			margin-left: 0.2em;
+			background-color: currentColor;
+			-webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'%3E%3C/path%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'%3E%3C/path%3E%3C/svg%3E");
+			mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'%3E%3C/path%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'%3E%3C/path%3E%3C/svg%3E");
+			-webkit-mask-size: contain;
+			mask-size: contain;
+			-webkit-mask-repeat: no-repeat;
+			mask-repeat: no-repeat;
+			-webkit-mask-position: center;
+			mask-position: center;
+		}
+		
 		&:hover {
-			color: #2b6cb0;
+			color: $color-accent-hover;
 		}
 	}
 
@@ -437,7 +457,7 @@
 			position: absolute;
 			content: "";
 			left: 0; right: 0; top: 0; bottom: 0;
-			background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+			background: color-mix(in srgb, var(--color-accent) var(--table-cell-mix, 7%), transparent);
 			pointer-events: none;
 		}
 
@@ -447,7 +467,7 @@
 			top: 0;
 			bottom: 0;
 			width: 4px;
-			background-color: #adf;
+			background-color: var(--color-accent);
 			pointer-events: none;
 		}
 	}
@@ -666,4 +686,20 @@
 		pointer-events: none;
 		height: 0;
 	}
+}
+
+/* ── Table text selection override ──
+   ::selection MUST be at top-level scope — nested SCSS won't work in WebKit/Blink.
+   When text is selected inside a table cell, use a soft accent bg and keep
+   text color readable (not white), consistent with ProseMirror's cell selection.
+*/
+.tableWrapper .selectedCell::selection,
+.tableWrapper .selectedCell *::selection {
+	background-color: transparent;
+	color: var(--color-text);
+}
+.tableWrapper .selectedCell::-moz-selection,
+.tableWrapper .selectedCell *::-moz-selection {
+	background-color: transparent;
+	color: var(--color-text);
 }

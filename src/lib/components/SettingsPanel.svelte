@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fade, fly } from 'svelte/transition';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { isSoundEnabled, setSoundEnabled } from '$lib/audio';
 
   // ── Props ──
@@ -17,6 +18,15 @@
     setSoundEnabled(soundEnabled);
   }
 
+  // ── Window Dragging ──
+  async function startDragging(e: PointerEvent) {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, textarea')) return;
+    const appWindow = getCurrentWindow();
+    await appWindow.startDragging();
+  }
+
   // ── Shortcuts ──
   // Each shortcut: label, modifiers array, key
   interface Shortcut {
@@ -25,6 +35,7 @@
     description: string;
     modifiers: string[];
     key: string;
+    group: 'App' | 'Editor';
     isRecording?: boolean;
   }
 
@@ -35,6 +46,15 @@
       description: 'Collapse or expand the window',
       modifiers: ['Alt'],
       key: 'F',
+      group: 'App',
+    },
+    {
+      id: 'pin',
+      label: 'Pin / Unpin',
+      description: 'Toggle always on top',
+      modifiers: ['Alt'],
+      key: 'E',
+      group: 'App',
     },
     {
       id: 'align-left',
@@ -42,6 +62,7 @@
       description: 'Align text or float image to left',
       modifiers: ['Alt'],
       key: 'A',
+      group: 'Editor',
     },
     {
       id: 'align-center',
@@ -49,6 +70,7 @@
       description: 'Align text to center or reset image float',
       modifiers: ['Alt'],
       key: 'H',
+      group: 'Editor',
     },
     {
       id: 'align-right',
@@ -56,6 +78,7 @@
       description: 'Align text or float image to right',
       modifiers: ['Alt'],
       key: 'D',
+      group: 'Editor',
     },
   ]);
 
@@ -176,6 +199,16 @@
     focusAnimationEnabled = !focusAnimationEnabled;
     localStorage.setItem('focusAnimationEnabled', focusAnimationEnabled.toString());
   }
+
+  // ── Toast Duration ──
+  let currentToastDuration = $state(
+    localStorage.getItem('toastDuration') ? parseInt(localStorage.getItem('toastDuration') as string) : 3000
+  );
+
+  function setToastDuration(duration: number) {
+    currentToastDuration = duration;
+    localStorage.setItem('toastDuration', duration.toString());
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -188,7 +221,8 @@
   tabindex="-1"
 >
   <!-- Header -->
-  <div class="settings-header">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="settings-header" onpointerdown={startDragging}>
     <button class="settings-back-btn" onclick={onClose} aria-label="Back">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
         <path d="M9.96967 3.46967C10.2626 3.76256 10.2626 4.23744 9.96967 4.53033L6.49999 8L9.96967 11.4697C10.2626 11.7626 10.2626 12.2374 9.96967 12.5303C9.67678 12.8232 9.20191 12.8232 8.90901 12.5303L4.90901 8.53033C4.61612 8.23744 4.61612 7.76256 4.90901 7.46967L8.90901 3.46967C9.20191 3.17678 9.67678 3.17678 9.96967 3.46967Z"/>
@@ -292,6 +326,24 @@
               <span class="toggle-thumb"></span>
             </button>
           </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Toast Duration</span>
+              <span class="setting-desc">How long notifications stay visible.</span>
+            </div>
+            <div class="scale-selector" role="group" aria-label="Toast Duration">
+              {#each ([1000, 3000, 5000, 8000] as number[]) as preset}
+                <button
+                  class="scale-btn {currentToastDuration === preset ? 'active' : ''}"
+                  onclick={() => setToastDuration(preset)}
+                  aria-pressed={currentToastDuration === preset}
+                >
+                  {preset / 1000}s
+                </button>
+              {/each}
+            </div>
+          </div>
         </div>
       {/if}
     </div>
@@ -306,7 +358,7 @@
             <circle cx="12" cy="12" r="10"></circle>
             <polyline points="12 6 12 12 16 14"></polyline>
           </svg>
-          <span>Timer Limit</span>
+          <span>Timer</span>
         </div>
         <svg class="chevron {timerOpen ? 'open' : ''}" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <path d="M7.18963 10.5875C7.43137 10.8142 7.81065 10.8019 8.03729 10.5602L12.0373 6.31016C12.2639 6.06841 12.2517 5.68914 12.0099 5.4625C11.7682 5.23586 11.3889 5.24809 11.1623 5.48984L7.57246 9.35584L3.98263 5.48984C3.75599 5.24809 3.37672 5.23586 3.13497 5.4625C2.89322 5.68914 2.88099 6.06841 3.10763 6.31016L7.10763 10.5602L7.18963 10.5875Z"/>
@@ -357,26 +409,54 @@
       {#if shortcutsOpen}
         <div class="section-body" transition:fly={{ y: -4, duration: 150 }}>
           <p class="shortcut-hint">Click a shortcut to record a new key combo. Press <kbd>Esc</kbd> to cancel.</p>
-          {#each shortcuts as shortcut}
-            <div class="shortcut-row">
-              <div class="shortcut-info">
-                <span class="shortcut-label">{shortcut.label}</span>
-                <span class="shortcut-desc">{shortcut.description}</span>
+          
+          <div class="shortcut-group">
+            <div class="shortcut-group-title">App Shortcuts</div>
+            {#each shortcuts.filter(s => s.group === 'App') as shortcut}
+              <div class="shortcut-row">
+                <div class="shortcut-info">
+                  <span class="shortcut-label">{shortcut.label}</span>
+                  <span class="shortcut-desc">{shortcut.description}</span>
+                </div>
+                <button
+                  class="shortcut-key-btn {recordingId === shortcut.id ? 'recording' : ''}"
+                  onclick={() => recordingId === shortcut.id ? cancelRecording() : startRecording(shortcut.id)}
+                  aria-label="Edit shortcut for {shortcut.label}"
+                >
+                  {#if recordingId === shortcut.id}
+                    <span class="recording-pulse"></span>
+                    <span class="recording-text">Recording...</span>
+                  {:else}
+                    {formatShortcut(shortcut)}
+                  {/if}
+                </button>
               </div>
-              <button
-                class="shortcut-key-btn {recordingId === shortcut.id ? 'recording' : ''}"
-                onclick={() => recordingId === shortcut.id ? cancelRecording() : startRecording(shortcut.id)}
-                aria-label="Edit shortcut for {shortcut.label}"
-              >
-                {#if recordingId === shortcut.id}
-                  <span class="recording-pulse"></span>
-                  <span class="recording-text">Recording...</span>
-                {:else}
-                  {formatShortcut(shortcut)}
-                {/if}
-              </button>
-            </div>
-          {/each}
+            {/each}
+          </div>
+
+          <div class="shortcut-group">
+            <div class="shortcut-group-title">Editor Shortcuts</div>
+            {#each shortcuts.filter(s => s.group === 'Editor') as shortcut}
+              <div class="shortcut-row">
+                <div class="shortcut-info">
+                  <span class="shortcut-label">{shortcut.label}</span>
+                  <span class="shortcut-desc">{shortcut.description}</span>
+                </div>
+                <button
+                  class="shortcut-key-btn {recordingId === shortcut.id ? 'recording' : ''}"
+                  onclick={() => recordingId === shortcut.id ? cancelRecording() : startRecording(shortcut.id)}
+                  aria-label="Edit shortcut for {shortcut.label}"
+                >
+                  {#if recordingId === shortcut.id}
+                    <span class="recording-pulse"></span>
+                    <span class="recording-text">Recording...</span>
+                  {:else}
+                    {formatShortcut(shortcut)}
+                  {/if}
+                </button>
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
     </div>
@@ -525,7 +605,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 6px 0;
+    padding: 8px 0px 8px 12px;
   }
 
   .setting-info {
@@ -620,12 +700,34 @@
   }
 
   // ── Shortcut Row ──
+  .shortcut-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  .shortcut-group-title {
+    font-family: $font-family-mono;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text);
+    opacity: 0.4;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    letter-spacing: 0.05em;
+  }
+
   .shortcut-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 5px 0;
+    padding: 8px 8px 8px 12px;
     border-bottom: 1px solid rgba(128,128,128,0.07);
 
     &:last-child {

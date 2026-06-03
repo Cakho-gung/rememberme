@@ -5,6 +5,16 @@ export const GlobalShortcuts = Extension.create({
 
 	addKeyboardShortcuts() {
 		return {
+			'Tab': () => {
+				if (this.editor.commands.sinkListItem('listItem')) return true;
+				if (this.editor.commands.sinkListItem('taskItem')) return true;
+				return true; // prevent default focus shift
+			},
+			'Shift-Tab': () => {
+				if (this.editor.commands.liftListItem('listItem')) return true;
+				if (this.editor.commands.liftListItem('taskItem')) return true;
+				return true; // prevent default focus shift
+			},
 			'Alt-a': () => {
 				if (this.editor.isActive('image')) {
 					return this.editor.chain().focus().updateAttributes('image', { float: 'left' }).run();

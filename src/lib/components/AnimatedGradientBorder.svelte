@@ -61,7 +61,7 @@
   .glow-wrapper {
     position: absolute;
     inset: 0;
-    z-index: 10;
+    z-index: 100;
     pointer-events: none;
     
     /* Cấu hình mặc định cho Light Mode */

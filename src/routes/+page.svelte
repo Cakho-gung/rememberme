@@ -7,9 +7,12 @@
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
   import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
+  import Toast from '$lib/components/Toast.svelte';
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, cleanupOrphanedImages, type Note } from '$lib/db';
   import { playCollapse, playThemeLight, playThemeDark, playHover, requestNotificationPermission, loadSoundPreference } from '$lib/audio';
+  import { showToast } from '$lib/toastStore';
+  import { ToastMessages } from '$lib/messages';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -38,6 +41,7 @@
     const appWindow = getCurrentWindow();
     await appWindow.setAlwaysOnTop(isPinned);
     isMenuOpen = false;
+    showToast(isPinned ? ToastMessages.PINNED : ToastMessages.UNPINNED);
   }
 
   function handleSettings() {
@@ -263,6 +267,12 @@
         await toggleCollapse();
         return;
       }
+
+      if (key === 'e') {
+        e.preventDefault();
+        await togglePin();
+        return;
+      }
     }
   }
 
@@ -400,15 +410,15 @@
 
   // -- Accent Color State --
   const accentColors = [
-    { name: 'Gray', hex: '#6B7280', hover: '#4B5563', text: '#ffffff' },
-    { name: 'Green', hex: '#38AA57', hover: '#38AA57', text: '#ffffff' },
-    { name: 'Blue', hex: '#1484FF', hover: '#1484FF', text: '#ffffff' },
-    { name: 'Pink', hex: '#E609B2', hover: '#E609B2', text: '#ffffff' },
-    { name: 'Orange', hex: '#ff6c0aff', hover: '#ff6c0aff', text: '#ffffff' },
-    { name: 'Yellow', hex: '#F7CF27', hover: '#F7CF27', text: '#27251eff' },
-    { name: 'Red', hex: '#F3343A', hover: '#F3343A', text: '#ffffff' },
-    { name: 'Purple', hex: '#8B2DF6', hover: '#8B2DF6', text: '#ffffff' },
-    { name: 'Teal', hex: '#00c0caff', hover: '#00c0caff', text: '#ffffff' }
+    { name: 'Gray',   hex: '#6B7280',   hover: '#4B5563',   text: '#ffffff', cellMix: '8%'  },
+    { name: 'Green',  hex: '#38AA57',   hover: '#38AA57',   text: '#ffffff', cellMix: '6%'  },
+    { name: 'Blue',   hex: '#1484FF',   hover: '#1484FF',   text: '#ffffff', cellMix: '7%'  },
+    { name: 'Pink',   hex: '#E609B2',   hover: '#E609B2',   text: '#ffffff', cellMix: '5%'  },
+    { name: 'Orange', hex: '#ff6c0aff', hover: '#ff6c0aff', text: '#ffffff', cellMix: '6%'  },
+    { name: 'Yellow', hex: '#F7CF27',   hover: '#F7CF27',   text: '#27251eff', cellMix: '12%' },
+    { name: 'Red',    hex: '#F3343A',   hover: '#F3343A',   text: '#ffffff', cellMix: '6%'  },
+    { name: 'Purple', hex: '#8B2DF6',   hover: '#8B2DF6',   text: '#ffffff', cellMix: '7%'  },
+    { name: 'Teal',   hex: '#00c0caff', hover: '#00c0caff', text: '#ffffff', cellMix: '7%'  }
   ];
   let currentAccent = $state(accentColors[0]);
   let isAccentMenuOpen = $state(false);
@@ -423,6 +433,7 @@
     document.documentElement.style.setProperty('--color-accent', color.hex);
     document.documentElement.style.setProperty('--color-accent-hover', color.hover);
     document.documentElement.style.setProperty('--color-accent-text', color.text);
+    document.documentElement.style.setProperty('--table-cell-mix', color.cellMix ?? '7%');
     localStorage.setItem('accentColor', JSON.stringify(color));
     isAccentMenuOpen = false;
     isMenuOpen = false;
@@ -573,16 +584,20 @@
     const savedAccent = localStorage.getItem('accentColor');
     if (savedAccent) {
       try {
-        const color = JSON.parse(savedAccent);
-        currentAccent = color;
-        document.documentElement.style.setProperty('--color-accent', color.hex);
-        document.documentElement.style.setProperty('--color-accent-hover', color.hover);
-        document.documentElement.style.setProperty('--color-accent-text', color.text || '#ffffff');
+        const savedColor = JSON.parse(savedAccent);
+        // Look up by hex in the current array to always get the latest cellMix etc.
+        const matchedColor = accentColors.find(c => c.hex === savedColor.hex) ?? { ...savedColor, cellMix: savedColor.cellMix ?? '7%' };
+        currentAccent = matchedColor;
+        document.documentElement.style.setProperty('--color-accent', matchedColor.hex);
+        document.documentElement.style.setProperty('--color-accent-hover', matchedColor.hover);
+        document.documentElement.style.setProperty('--color-accent-text', matchedColor.text || '#ffffff');
+        document.documentElement.style.setProperty('--table-cell-mix', matchedColor.cellMix ?? '7%');
       } catch (e) {}
     } else {
       document.documentElement.style.setProperty('--color-accent', currentAccent.hex);
       document.documentElement.style.setProperty('--color-accent-hover', currentAccent.hover);
       document.documentElement.style.setProperty('--color-accent-text', currentAccent.text);
+      document.documentElement.style.setProperty('--table-cell-mix', currentAccent.cellMix);
     }
     
     // Load sound preference from localStorage
@@ -895,6 +910,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     forceVisible={isTimerAlerting}
     style="border-radius: 25vmin; scale: 1.6 1.4;"
   />
+  <Toast />
   <div 
     class="glass-widget" 
     class:collapsed={isCollapsed} 
@@ -1170,7 +1186,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                   <span class="toc-text">{heading.text}</span>
                 </button>
               {:else}
-                <div class="toc-empty">Không tìm thấy tiêu đề trong ghi chú này</div>
+                <div class="toc-empty">(。・・)ノ No heading found in this note</div>
               {/each}
             </div>
           </div>

@@ -202,3 +202,13 @@ button, a, input, textarea {
   }
 }
 
+// Custom text selection highlight
+::selection {
+  background-color: $color-accent;
+  color: #ffffff;
+}
+
+::-moz-selection {
+  background-color: $color-accent;
+  color: #ffffff;
+}

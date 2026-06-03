@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { playTick, playAlarm, showNotification, playStart, playPause, playStop } from '$lib/audio';
+  import { showToast } from '$lib/toastStore';
+  import { ToastMessages } from '$lib/messages';
 
   let { onComplete = () => {} }: { onComplete?: () => void } = $props();
 
@@ -173,6 +175,10 @@
       currentState = 'running';
       timeRemaining = totalTimeSet;
       startTimer();
+      
+      let roundedMins = Math.round(totalTimeSet / 60 / 5) * 5;
+      if (roundedMins === 0) roundedMins = Math.max(1, Math.round(totalTimeSet / 60));
+      showToast(ToastMessages.TIMER_START(roundedMins));
     } else {
       currentState = 'idle';
       dragX = 0;
@@ -222,6 +228,8 @@
     showNotification("RememberMe - Time's up!", {
       body: randomMsg,
     });
+
+    showToast(ToastMessages.TIMER_DONE);
 
     onComplete();
     setTimeout(() => {

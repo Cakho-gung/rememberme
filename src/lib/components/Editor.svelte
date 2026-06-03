@@ -343,12 +343,142 @@
 			editor.chain().focus().extendMarkRange('link').setLink({ href: originalLinkUrl }).run();
 		}
 	}
+
+	// ── Hover Link Popup ──
+	let hoverLinkPopupEl = $state<HTMLElement>();
+	let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+	let hidePopupTimer: ReturnType<typeof setTimeout> | null = null;
+	let showHoverLinkPopup = $state(false);
+	let hoverLinkHref = $state('');
+	let hoverLinkPos = $state({ top: 0, left: 0 });
+	let hoveredLinkElement = $state<HTMLElement | null>(null);
+	let isMouseOverPopup = false;
+	let isPopupFocused = false;
+
+	function handleEditorMouseMove(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		const aTag = target.closest('a');
+		
+		if (aTag) {
+			if (hidePopupTimer) clearTimeout(hidePopupTimer);
+			
+			if (!isPopupFocused) {
+				if (hoveredLinkElement !== aTag || (!showHoverLinkPopup && !hoverTimer)) {
+					if (hoverTimer) clearTimeout(hoverTimer);
+					hoveredLinkElement = aTag;
+					hoverLinkHref = aTag.getAttribute('href') || '';
+					hoverTimer = setTimeout(() => {
+						const rect = aTag.getBoundingClientRect();
+						const containerRect = element?.parentElement?.getBoundingClientRect();
+						if (containerRect) {
+							hoverLinkPos = { 
+								top: rect.bottom - containerRect.top + 4, 
+								left: rect.left - containerRect.left 
+							};
+							showHoverLinkPopup = true;
+						}
+						hoverTimer = null;
+					}, 1000);
+				}
+			}
+		} else {
+			if (hoveredLinkElement) {
+				if (hoverTimer) {
+					clearTimeout(hoverTimer);
+					hoverTimer = null;
+				}
+				if (!isMouseOverPopup && !isPopupFocused) {
+					if (hidePopupTimer) clearTimeout(hidePopupTimer);
+					hidePopupTimer = setTimeout(() => {
+						if (!isMouseOverPopup && !isPopupFocused) {
+							hoveredLinkElement = null;
+							showHoverLinkPopup = false;
+						}
+					}, 300);
+				}
+			}
+		}
+	}
+
+	function handlePopupMouseEnter() {
+		isMouseOverPopup = true;
+		if (hidePopupTimer) clearTimeout(hidePopupTimer);
+	}
+
+	function handlePopupMouseLeave() {
+		isMouseOverPopup = false;
+		if (isPopupFocused) return;
+		if (hidePopupTimer) clearTimeout(hidePopupTimer);
+		hidePopupTimer = setTimeout(() => {
+			showHoverLinkPopup = false;
+			hoveredLinkElement = null;
+		}, 100);
+	}
+
+	function handlePopupBlur() {
+		isPopupFocused = false;
+		if (!isMouseOverPopup) {
+			showHoverLinkPopup = false;
+			hoveredLinkElement = null;
+		}
+	}
+
+	function updateHoveredLink(newUrl: string) {
+		if (!editor || !hoveredLinkElement) return;
+		hoverLinkHref = newUrl;
+		const pos = editor.view.posAtDOM(hoveredLinkElement, 0);
+		if (pos >= 0) {
+			// update link without stealing focus
+			editor.chain().setTextSelection(pos).extendMarkRange('link').setLink({ href: newUrl }).run();
+		}
+	}
+
+	function removeHoveredLink() {
+		if (!editor || !hoveredLinkElement) return;
+		const pos = editor.view.posAtDOM(hoveredLinkElement, 0);
+		if (pos >= 0) {
+			editor.chain().focus().setTextSelection(pos).unsetLink().run();
+		}
+		showHoverLinkPopup = false;
+		hoveredLinkElement = null;
+		isMouseOverPopup = false;
+	}
 </script>
 
 <div class="text-editor-container">
 	<!-- Text Editor Main Area -->
-	<div class="text-editor" bind:this={element}></div>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="text-editor" bind:this={element} onmousemove={handleEditorMouseMove}></div>
 	
+	{#if showHoverLinkPopup}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div 
+			bind:this={hoverLinkPopupEl}
+			class="hover-link-popup"
+			style="top: {hoverLinkPos.top}px; left: {hoverLinkPos.left}px;"
+			onmouseenter={handlePopupMouseEnter}
+			onmouseleave={handlePopupMouseLeave}
+			transition:fade={{ duration: 150 }}
+		>
+			<input 
+				class="hover-link-input"
+				value={hoverLinkHref}
+				onfocus={() => isPopupFocused = true}
+				onblur={handlePopupBlur}
+				oninput={(e) => updateHoveredLink(e.currentTarget.value)}
+				onkeydown={(e) => {
+					if (e.key === 'Enter' || e.key === 'Escape') {
+						e.currentTarget.blur();
+					}
+				}}
+				placeholder="Link URL"
+			/>
+			<div class="hover-link-divider"></div>
+			<button class="hover-link-remove" onmousedown={(e) => { e.preventDefault(); removeHoveredLink(); }} title="Remove link">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+			</button>
+		</div>
+	{/if}
 </div>
 
 <!-- Tiptap Bubble Menu Template -->
@@ -802,5 +932,60 @@
 		font-weight: 500;
 		min-width: 90px;
 		justify-content: space-between;
+	}
+
+	/* Hover Link Popup */
+	.hover-link-popup {
+		position: absolute;
+		z-index: 100;
+		display: flex;
+		align-items: center;
+		background: var(--bg-focused, rgba(255, 255, 255, 0.98));
+		border: 1px solid var(--dropdown-divider-bg, rgba(0, 0, 0, 0.1));
+		border-radius: 8px;
+		padding: 4px 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		gap: 6px;
+	}
+
+	.hover-link-input {
+		font-family: inherit;
+		font-size: 13px;
+		color: var(--color-text, #333);
+		background: transparent;
+		border: none;
+		outline: none;
+		padding: 4px 6px;
+		width: 250px;
+		border-radius: 4px;
+		transition: background 0.15s ease;
+
+		&:hover, &:focus {
+			background: var(--dropdown-item-hover, rgba(0, 0, 0, 0.05));
+		}
+	}
+
+	.hover-link-divider {
+		width: 1px;
+		height: 14px;
+		background: var(--dropdown-divider-bg, rgba(0, 0, 0, 0.15));
+	}
+
+	.hover-link-remove {
+		background: transparent;
+		border: none;
+		color: var(--color-text-muted, #666);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 4px;
+		border-radius: 4px;
+		transition: all 0.15s ease;
+
+		&:hover {
+			background: rgba(255, 0, 0, 0.1);
+			color: #ff4444;
+		}
 	}
 </style>
