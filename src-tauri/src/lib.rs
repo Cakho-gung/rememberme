@@ -119,6 +119,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![save_image, delete_image, delete_image_by_name])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

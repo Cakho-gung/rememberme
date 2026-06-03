@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "RememberMe",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.rand.rememberme",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -29,6 +29,14 @@
         "enable": true,
         "scope": ["**"]
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE0MzE3NDM0ODI5ODEwQ0MKUldUTUVKaUNOSFF4cEplc2lDSjU0ZGQrK2FmaTgzUzZDYzArc0h0RFdyRndUSXRiK3lqa1BOSk8K",
+      "endpoints": [
+        "https://github.com/Cakho-gung/rememberme/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {

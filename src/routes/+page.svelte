@@ -8,11 +8,13 @@
   import TimerWidget from '$lib/components/TimerWidget.svelte';
   import AnimatedGradientBorder from '$lib/components/AnimatedGradientBorder.svelte';
   import Toast from '$lib/components/Toast.svelte';
+  import UpdaterPopup from '$lib/components/UpdaterPopup.svelte';
   import SettingsPanel from '$lib/components/SettingsPanel.svelte';
   import { loadNotes, saveIndex, saveNoteContent, deleteNoteData, loadNoteContent, cleanupOrphanedImages, type Note } from '$lib/db';
   import { playCollapse, playThemeLight, playThemeDark, playHover, requestNotificationPermission, loadSoundPreference } from '$lib/audio';
   import { showToast } from '$lib/toastStore';
   import { ToastMessages } from '$lib/messages';
+  import { checkForAppUpdates } from '$lib/updater';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -693,6 +695,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
     // Run Garbage Collection for orphaned images on app startup
     cleanupOrphanedImages();
+
+    // Check for app updates
+    checkForAppUpdates();
   });
 
   let activeNote = $derived(mockNotes.find(n => n.id === activeNoteId && !n.archived) || mockNotes.find(n => !n.archived));
@@ -911,6 +916,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     style="border-radius: 25vmin; scale: 1.6 1.4;"
   />
   <Toast />
+  <UpdaterPopup />
   <div 
     class="glass-widget" 
     class:collapsed={isCollapsed} 
