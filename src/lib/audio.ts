@@ -68,13 +68,13 @@ function playSound(key: string, clone: boolean = false) {
   }
 }
 
-export function playTick() { playSound('tick', true); }
+export function playTick() { playSound('tick', false); }
 export function playAlarm() { playSound('alarm'); }
 export function playStart() { playSound('start'); }
 export function playPause() { playSound('pause'); }
 export function playStop() { playSound('stop'); }
 export function playCollapse() { playSound('collapse'); }
-export function playHover() { playSound('hover', true); }
+export function playHover() { playSound('hover', false); }
 export function playThemeLight() { playSound('themeLight'); }
 export function playThemeDark() { playSound('themeDark'); }
 
