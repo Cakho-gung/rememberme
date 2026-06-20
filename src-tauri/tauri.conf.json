@@ -10,6 +10,7 @@
     "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "RememberMe",
@@ -20,7 +21,8 @@
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "resizable": true
+        "resizable": true,
+        "shadow": false
       }
     ],
     "security": {

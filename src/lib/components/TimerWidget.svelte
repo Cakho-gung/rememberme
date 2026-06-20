@@ -1,34 +1,73 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { playTick, playAlarm, showNotification, playStart, playPause, playStop } from '$lib/audio';
+  import { playTick, playAlarm, showNotification, playStart, playPause, playStop, requestNotificationPermission } from '$lib/audio';
   import { showToast } from '$lib/toastStore';
   import { ToastMessages } from '$lib/messages';
 
-  let { onComplete = () => {} }: { onComplete?: () => void } = $props();
+  let { 
+    onComplete = () => {},
+    timerPreset: presetProp = undefined,
+  }: { 
+    onComplete?: () => void;
+    timerPreset?: string;
+  } = $props();
 
   type TimerState = 'idle' | 'dragging' | 'running' | 'paused';
   let currentState: TimerState = $state('idle');
   
   let containerRef: HTMLDivElement;
+  let pillBtnRef: HTMLButtonElement;
+  let progressGradientRef: HTMLDivElement | undefined;
   
+  // Use Svelte reactive state — we fixed the audio clone bottleneck,
+  // so Svelte's reactivity can easily handle 60fps here without lag.
   let dragX = $state(0);
+  
   let maxX = $state(0);
   
   let containerWidth = $state(0);
+
+  // Cached UI scale – read once at drag-start and on resize, not per-frame
+  let cachedUiScale = 1;
+
+  function readUiScale(): number {
+    return parseFloat(
+      document.documentElement.style.getPropertyValue('--ui-scale') ||
+      getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')
+    ) || 1;
+  }
+
+  /**
+   * Apply transform directly to DOM for the heaviest elements (pill and gradient)
+   * to guarantee 60fps on macOS. The rest (dots/labels) use Svelte reactivity.
+   */
+  function applyTransform(x: number) {
+    dragX = x; // Keep Svelte state in sync for dots/labels visibility
+    
+    // 1. Move pill button directly
+    if (pillBtnRef) {
+      pillBtnRef.style.transform = `translateX(${x}px)`;
+    }
+    
+    // 2. Update progress bar width directly
+    if (progressGradientRef) {
+      progressGradientRef.style.width = `${x + 16}px`;
+    }
+  }
   
   // ── Load Preset Settings ──
   type TimerPreset = '20s' | '60m' | '2h' | '4h' | '8h';
 
   function getTimerPreset(): TimerPreset {
     if (typeof window === 'undefined') return '60m';
-    const saved = localStorage.getItem('timerPreset');
+    // Allow parent to pass an override (e.g. after settings change)
+    const saved = presetProp ?? localStorage.getItem('timerPreset');
     if (saved === '20s' || saved === '60m' || saved === '2h' || saved === '4h' || saved === '8h') {
-      return saved;
+      return saved as TimerPreset;
     }
     return '60m';
   }
 
-  const activePreset = getTimerPreset();
 
   // Preset Mapping Configs:
   // maxSeconds: the actual duration in seconds
@@ -80,16 +119,19 @@
     },
   };
 
-  const config = presetConfig[activePreset];
+  // Reactive preset — re-read when prop changes
+  let activePreset = $derived(getTimerPreset());
 
-  // Dynamic bounds configuration
-  const MAX_SECONDS = config.maxSeconds;
-  const MAX_MINUTES = config.maxUnitsValue; // Represent maxUnitsValue for geometry
-  const timerUnit = config.unit;
+  let config = $derived(presetConfig[activePreset]);
+
+  // Dynamic bounds configuration — all reactive to preset
+  let MAX_SECONDS = $derived(config.maxSeconds);
+  let MAX_MINUTES = $derived(config.maxUnitsValue); // Represent maxUnitsValue for geometry
+  let timerUnit = $derived(config.unit);
 
   // Dynamic labels and ticks
-  const timeLabels = config.labels;
-  const timeDots = config.dots;
+  let timeLabels = $derived(config.labels);
+  let timeDots = $derived(config.dots);
 
   let timeRemaining = $state(0);
   let totalTimeSet = $state(0);
@@ -106,8 +148,10 @@
       // Nếu đang chạy hoặc tạm dừng, phải tính lại dragX theo width mới
       if (currentState === 'running' || currentState === 'paused') {
         const percentage = timeRemaining / MAX_SECONDS;
-        dragX = percentage * maxX;
+        applyTransform(percentage * maxX);
       }
+      // Refresh cached scale on resize (window may have changed zoom)
+      cachedUiScale = readUiScale();
     }
   });
 
@@ -119,6 +163,9 @@
       // Container width minus button width (32)
       maxX = Math.max(0, containerWidth - 32);
     }
+
+    // Cache uiScale at drag-start so pointermove handler never calls getComputedStyle
+    cachedUiScale = readUiScale();
     
     if (e.target instanceof Element) {
       e.target.setPointerCapture(e.pointerId);
@@ -138,18 +185,17 @@
     if (!containerRef) return;
     const rect = containerRef.getBoundingClientRect();
     
-    // Read live UI scale factor to convert viewport coordinates back to CSS coordinates
-    const uiScale = parseFloat(
-      document.documentElement.style.getPropertyValue('--ui-scale') ||
-      getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')
-    ) || 1;
+    // Use cached uiScale (set at drag-start) — avoids getComputedStyle on every frame
+    // which causes jank on macOS WKWebView
+    const uiScale = cachedUiScale || 1;
     
     // Calculate new X based on mouse position relative to container
     // Client X and rect.left are viewport coordinates, so we divide by uiScale to get CSS coordinates
     let newX = (e.clientX - rect.left) / uiScale - 16;
     newX = Math.max(0, Math.min(newX, maxX));
     
-    dragX = newX; // Smooth drag, no visual snapping
+    // Direct DOM update bypasses Svelte reactivity — eliminates jank on macOS WKWebView
+    applyTransform(newX);
     
     const percentage = newX / maxX;
     totalTimeSet = percentage * MAX_SECONDS;
@@ -171,6 +217,9 @@
     window.removeEventListener('pointerup', onDragEnd as EventListener);
     
     if (totalTimeSet > 0) {
+      // Prompt for notification permission on user interaction (required by macOS)
+      requestNotificationPermission();
+      
       playStart();
       currentState = 'running';
       timeRemaining = totalTimeSet;
@@ -181,7 +230,7 @@
       showToast(ToastMessages.TIMER_START(roundedMins));
     } else {
       currentState = 'idle';
-      dragX = 0;
+      applyTransform(0);
     }
   }
 
@@ -199,7 +248,9 @@
       
       // Update dragX based on time remaining to move it left
       const percentage = timeRemaining / MAX_SECONDS;
-      dragX = percentage * maxX;
+      const newX = percentage * maxX;
+      // Direct DOM update for smooth animation on macOS — avoids reactive overhead per frame
+      applyTransform(newX);
       
       if (timeRemaining > 0) {
         requestRef = requestAnimationFrame(tick);
@@ -212,7 +263,7 @@
 
   function onTimerComplete() {
     isStopping = true;
-    dragX = 0;
+    applyTransform(0);
     
     playAlarm();
     
@@ -254,7 +305,7 @@
     playStop();
     if (requestRef) cancelAnimationFrame(requestRef);
     isStopping = true;
-    dragX = 0;
+    applyTransform(0);
     timeRemaining = 0;
     setTimeout(() => {
       isStopping = false;
@@ -283,7 +334,12 @@
   {#if currentState === 'dragging' || currentState === 'running' || currentState === 'paused'}
     <div class="timer-track" class:stopping={isStopping}>
       <!-- Progress Gradient -->
-      <div class="progress-gradient" class:stopping={isStopping} style="width: {dragX + 16}px"></div>
+      <div 
+        class="progress-gradient" 
+        class:stopping={isStopping} 
+        style="width: {dragX + 16}px"
+        bind:this={progressGradientRef}
+      ></div>
 
       <!-- Dots -->
       {#each timeDots as dot}
@@ -330,6 +386,7 @@
     class:active={currentState === 'running' || currentState === 'paused'}
     class:stopping={isStopping}
     style="transform: translateX({dragX}px);"
+    bind:this={pillBtnRef}
     onpointerdown={startDrag}
     onclick={currentState === 'running' || currentState === 'paused' ? togglePause : undefined}
     aria-label="Timer Control"
@@ -461,6 +518,10 @@
     opacity: 0.5;
     position: absolute; // Allow translation
     left: 0; // Base position
+    // GPU compositing layer — ensures transform updates don't trigger repaints
+    will-change: transform;
+    // Force GPU layer creation on macOS WKWebView
+    transform: translateX(0) translateZ(0);
 
     &:hover {
       opacity: 0.8;
@@ -494,7 +555,9 @@
       color: #fff;
       opacity: 1;
       cursor: grabbing;
-      transition: none; // Remove transition during drag for immediate follow
+      // Remove ALL transitions during drag for immediate follow on all platforms
+      transition: none !important;
+      -webkit-transition: none !important;
     }
 
     &.active {

@@ -2,7 +2,7 @@
   import { getCurrentWindow, LogicalSize, LogicalPosition } from '@tauri-apps/api/window';
   import { fade, slide } from 'svelte/transition';
   import { flip } from 'svelte/animate';
-  import { onMount, tick } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import Editor from '$lib/components/Editor.svelte';
   import Lightbox from '$lib/components/Lightbox.svelte';
   import TimerWidget from '$lib/components/TimerWidget.svelte';
@@ -15,6 +15,7 @@
   import { showToast } from '$lib/toastStore';
   import { ToastMessages } from '$lib/messages';
   import { checkForAppUpdates } from '$lib/updater';
+  import { initOSClass, isMac } from '$lib/osUtils';
   
   import 'highlight.js/styles/tokyo-night-dark.css';
   import 'katex/dist/katex.min.css';
@@ -25,6 +26,8 @@
   let titleEditValue = $state('');
   let isSettingsOpen = $state(false);
   let focusAnimationEnabled = $state(true);
+  // Safe to access localStorage here since this is a Tauri app (client-only, no SSR)
+  let currentTimerPreset = $state<string>(localStorage.getItem('timerPreset') ?? '60m');
 
   function focus(node: HTMLElement) {
     node.focus();
@@ -54,6 +57,8 @@
   function closeSettings() {
     isSettingsOpen = false;
     focusAnimationEnabled = localStorage.getItem('focusAnimationEnabled') !== 'false';
+    // Refresh timer preset so TimerWidget picks up the new config
+    currentTimerPreset = localStorage.getItem('timerPreset') ?? '60m';
   }
 
   async function startDragging(e: PointerEvent) {
@@ -213,6 +218,10 @@
   let isTimerAlerting = $state(false);
   let blurTimeout: ReturnType<typeof setTimeout>;
 
+  // Tauri native focus event unlisteners (stored for cleanup on destroy)
+  let unlistenFocus: (() => void) | null = null;
+  let unlistenBlur: (() => void) | null = null;
+
   function handleWindowBlur() {
     clearTimeout(blurTimeout);
     // Đợi 300ms, nếu không có focus lại thì mới coi là mất focus thật. 
@@ -250,7 +259,17 @@
     // Gọi Tauri API để mang cửa sổ lên trên cùng
     try {
       const appWindow = getCurrentWindow();
-      // Mẹo ép OS đưa cửa sổ lên trên cùng (bỏ qua chặn focus của Windows)
+      // Đảm bảo cửa sổ không bị ẩn hoặc minimize trên Mac trước khi focus
+      await appWindow.unminimize();
+      
+      // Kích hoạt toàn bộ ứng dụng lên phía trước (rất quan trọng trên macOS)
+      const { show: showApp } = await import('@tauri-apps/api/app');
+      await showApp();
+
+      await appWindow.show();
+      // Yêu cầu từ user: nhảy ra giữa màn hình
+      await appWindow.center();
+      // Mẹo ép OS đưa cửa sổ lên trên cùng
       await appWindow.setAlwaysOnTop(true);
       await appWindow.setFocus();
     } catch (e) {
@@ -261,16 +280,22 @@
   async function handleWindowKeyDown(e: KeyboardEvent) {
     dismissTimerAlert();
 
-    if (e.altKey) {
-      const key = e.key.toLowerCase();
+    // Support Alt (Windows/Mac) and Cmd (Mac) for shortcuts
+    const isMac = navigator.userAgent.includes('Mac');
+    const isModifier = e.altKey || (isMac && e.metaKey);
+
+    if (isModifier) {
+      // Use e.code instead of e.key because pressing Option/Alt on Mac types special characters (e.g., Option+F -> ƒ)
+      const code = e.code;
       
-      if (key === 'f') {
+      if (code === 'KeyF') {
         e.preventDefault();
         await toggleCollapse();
         return;
       }
 
-      if (key === 'e') {
+      // Support both E and T for pinning as per user request
+      if (code === 'KeyE' || code === 'KeyT') {
         e.preventDefault();
         await togglePin();
         return;
@@ -577,6 +602,37 @@
   }
 
   onMount(async () => {
+    // Detect OS and add data-os attribute to <html> for platform-specific CSS
+    initOSClass();
+
+    /*
+     * On macOS, standard DOM window.blur/focus events are unreliable inside WKWebView.
+     * The web events can fire at wrong times (e.g., when opening system menus, typing
+     * in IME, or during window resize). We use Tauri’s native window focus events
+     * which are dispatched directly from the AppKit layer and are always accurate.
+     *
+     * On Windows, DOM events are reliable so we keep using svelte:window bindings there.
+     */
+    if (isMac()) {
+      const appWindow = getCurrentWindow();
+      unlistenFocus = await appWindow.onFocusChanged(({ payload: focused }) => {
+        if (focused) {
+          clearTimeout(blurTimeout);
+          isWindowFocused = true;
+          dismissTimerAlert();
+        } else {
+          clearTimeout(blurTimeout);
+          blurTimeout = setTimeout(() => {
+            isWindowFocused = false;
+            isDotDragging = false;
+            hoveredToolAction = null;
+            hoveredHeadingId = null;
+            isMenuOpen = false;
+            isAccentMenuOpen = false;
+          }, 300);
+        }
+      });
+    }
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
       isDarkMode = true;
@@ -698,6 +754,13 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
     // Check for app updates
     checkForAppUpdates();
+  });
+
+  // Cleanup Tauri native listeners on component destroy
+  onDestroy(() => {
+    unlistenFocus?.();
+    unlistenBlur?.();
+    clearTimeout(blurTimeout);
   });
 
   let activeNote = $derived(mockNotes.find(n => n.id === activeNoteId && !n.archived) || mockNotes.find(n => !n.archived));
@@ -909,19 +972,25 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <main class="app-container">
   <AnimatedGradientBorder 
-    glowWidth="15vmin"
-    blur="15vmin"
+    ringWidth="24px"
+    borderRadius="8px"
+    blur="64px"
+    saturation="200%"
+    animationDuration="3s"
     isFocused={(isWindowFocused && focusAnimationEnabled) || isTimerAlerting}
     forceVisible={isTimerAlerting}
-    style="border-radius: 25vmin; scale: 1.6 1.4;"
   />
   <Toast />
   <UpdaterPopup />
   <div 
     class="glass-widget" 
-    class:collapsed={isCollapsed} 
+    class:collapsed={isCollapsed}
+    class:glow-active={(isWindowFocused && focusAnimationEnabled) || isTimerAlerting}
+    class:timer-alerting={isTimerAlerting}
     style="background-color: {isWindowFocused ? 'var(--bg-focused)' : 'var(--bg-unfocused)'}; transition: background-color 0.3s ease; height: 100%;"
   >
+    <!-- Expanded drag region to cover top padding -->
+    <div class="top-drag-zone" onpointerdown={onTitlePointerDown} onpointermove={onTitlePointerMove} onpointerup={onTitlePointerUp}></div>
 
     <!-- Main inner column: Title + Editor + Timer -->
     <div class="inner-column">
@@ -967,52 +1036,28 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           
         </div>
 
-        <!-- Dropdown Notes List -->
+        <!-- Dropdown Table of Contents -->
         {#if isDropdownOpen && !isCollapsed}
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div 
-            class="dropdown-list" 
+            class="dropdown-list toc-dropdown" 
             transition:slide={{ duration: 200 }}
+            style="padding: 0 12px 16px 12px; gap: 4px;"
           >
-            {#each dropdownNotes as note (note.id)}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div 
-                class="dropdown-item" 
-                class:dragging={draggingNoteId === note.id}
-                class:drop-target-top={hoveredNoteId === note.id && dropPosition === 'top'}
-                class:drop-target-bottom={hoveredNoteId === note.id && dropPosition === 'bottom'}
-                data-note-id={note.id}
-                onclick={() => selectNote(note.id)}
-                animate:flip={{ duration: 150 }}
+            {#each headings as heading}
+              <button 
+                class="toc-item level-{heading.level}" 
+                class:drag-hover={hoveredHeadingId === heading.id}
+                data-id={heading.id}
+                onclick={() => {
+                  scrollToHeading(heading);
+                  toggleDropdown();
+                }}
               >
-                <!-- Drag Handle — pointer events for drag-to-reorder (Pointer Events API, not HTML5 drag) -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div 
-                  class="drag-handle" 
-                  aria-label="Drag to reorder"
-                  onpointerdown={(e) => onDragHandlePointerDown(e, note.id)}
-                  onpointermove={(e) => onDragHandlePointerMove(e, note.id)}
-                  onpointerup={(e) => onDragHandlePointerUp(e, note.id)}
-                  onpointercancel={onDragHandlePointerCancel}
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="5" cy="3" r="1.5"/>
-                    <circle cx="11" cy="3" r="1.5"/>
-                    <circle cx="5" cy="8" r="1.5"/>
-                    <circle cx="11" cy="8" r="1.5"/>
-                    <circle cx="5" cy="13" r="1.5"/>
-                    <circle cx="11" cy="13" r="1.5"/>
-                  </svg>
-                </div>
-
-                <span class="item-text" class:active={note.id === activeNoteId}>{note.title || 'Untitled Note'}</span>
-                <button class="archive-item-btn" onclick={(e) => archiveNoteById(e, note.id)} aria-label="Archive Note">
-                  <svg class="item-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12.8333 5.83301H3.16626V12.667C3.16635 12.8878 3.2543 13.0997 3.4104 13.2559C3.56668 13.4121 3.77923 13.5 4.00024 13.5H12.0002C12.2211 13.4999 12.4329 13.4121 12.5891 13.2559C12.7453 13.0997 12.8332 12.8879 12.8333 12.667V5.83301ZM9.33325 7.5C9.60939 7.5 9.83325 7.72386 9.83325 8C9.83325 8.27614 9.60939 8.5 9.33325 8.5H6.66626C6.39027 8.49982 6.16626 8.27603 6.16626 8C6.16626 7.72397 6.39027 7.50018 6.66626 7.5H9.33325ZM14.1663 2.66699C14.1663 2.57505 14.0921 2.50018 14.0002 2.5H2.00024C1.9082 2.5 1.83325 2.57494 1.83325 2.66699V4.66699C1.83343 4.75889 1.90831 4.83301 2.00024 4.83301H14.0002C14.092 4.83283 14.1661 4.75878 14.1663 4.66699V2.66699ZM15.1663 4.66699C15.1661 5.31107 14.6443 5.83283 14.0002 5.83301H13.8333V12.667C13.8332 13.1531 13.6399 13.6192 13.2961 13.9629C12.9524 14.3066 12.4864 14.4999 12.0002 14.5H4.00024C3.51401 14.5 3.04719 14.3067 2.70337 13.9629C2.35973 13.6192 2.16635 13.153 2.16626 12.667V5.83301H2.00024C1.35602 5.83301 0.833428 5.31117 0.833252 4.66699V2.66699C0.833252 2.02266 1.35591 1.5 2.00024 1.5H14.0002C14.6444 1.50018 15.1663 2.02277 15.1663 2.66699V4.66699Z" fill="currentColor"/>
-                  </svg>
-                </button>
-              </div>
+                <span class="toc-bullet">•</span>
+                <span class="toc-text">{heading.text}</span>
+              </button>
+            {:else}
+              <div class="toc-empty" style="opacity: 0.5; padding: 4px 8px;">(。・・)ノ No heading found</div>
             {/each}
           </div>
         {/if}
@@ -1066,7 +1111,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
       <!-- Timer row: luôn mount để tránh reset timer khi collapse. Ẩn bằng CSS khi cần. -->
       <div class="timer-row delay-5" class:timer-hidden={isCollapsed || isSettingsOpen}>
-        <TimerWidget onComplete={handleTimerComplete} />
+        <TimerWidget onComplete={handleTimerComplete} timerPreset={currentTimerPreset} />
       </div>
     </div>
 
@@ -1174,25 +1219,50 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           </svg>
         </button>
 
-        <!-- Table of Contents -->
+        <!-- Notes List (Replaces TOC in Overlay) -->
         {#if !isAccentMenuOpen}
-          <div class="toc-container" transition:fade={{ duration: 150 }}>
-            <div class="toc-title">Table of content</div>
-            <div class="toc-list">
-              {#each headings as heading}
-                <button 
-                  class="toc-item level-{heading.level}" 
-                  class:drag-hover={hoveredHeadingId === heading.id}
-                  data-id={heading.id}
-                  onclick={() => {
-                    scrollToHeading(heading);
-                  }}
+          <div class="toc-container notes-overlay-container" transition:fade={{ duration: 150 }}>
+            <div class="toc-title">Notes</div>
+            <div class="toc-list dropdown-list" style="max-height: none; padding: 0;">
+              {#each dropdownNotes as note (note.id)}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div 
+                  class="dropdown-item" 
+                  class:dragging={draggingNoteId === note.id}
+                  class:drop-target-top={hoveredNoteId === note.id && dropPosition === 'top'}
+                  class:drop-target-bottom={hoveredNoteId === note.id && dropPosition === 'bottom'}
+                  data-note-id={note.id}
+                  onclick={() => { selectNote(note.id); isMenuOpen = false; }}
+                  animate:flip={{ duration: 150 }}
                 >
-                  <span class="toc-bullet">•</span>
-                  <span class="toc-text">{heading.text}</span>
-                </button>
-              {:else}
-                <div class="toc-empty">(。・・)ノ No heading found in this note</div>
+                  <!-- Drag Handle — pointer events for drag-to-reorder -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div 
+                    class="drag-handle" 
+                    aria-label="Drag to reorder"
+                    onpointerdown={(e) => onDragHandlePointerDown(e, note.id)}
+                    onpointermove={(e) => onDragHandlePointerMove(e, note.id)}
+                    onpointerup={(e) => onDragHandlePointerUp(e, note.id)}
+                    onpointercancel={onDragHandlePointerCancel}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                      <circle cx="5" cy="3" r="1.5"/>
+                      <circle cx="11" cy="3" r="1.5"/>
+                      <circle cx="5" cy="8" r="1.5"/>
+                      <circle cx="11" cy="8" r="1.5"/>
+                      <circle cx="5" cy="13" r="1.5"/>
+                      <circle cx="11" cy="13" r="1.5"/>
+                    </svg>
+                  </div>
+
+                  <span class="item-text" class:active={note.id === activeNoteId}>{note.title || 'Untitled Note'}</span>
+                  <button class="archive-item-btn" onclick={(e) => archiveNoteById(e, note.id)} aria-label="Archive Note">
+                    <svg class="item-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12.8333 5.83301H3.16626V12.667C3.16635 12.8878 3.2543 13.0997 3.4104 13.2559C3.56668 13.4121 3.77923 13.5 4.00024 13.5H12.0002C12.2211 13.4999 12.4329 13.4121 12.5891 13.2559C12.7453 13.0997 12.8332 12.8879 12.8333 12.667V5.83301ZM9.33325 7.5C9.60939 7.5 9.83325 7.72386 9.83325 8C9.83325 8.27614 9.60939 8.5 9.33325 8.5H6.66626C6.39027 8.49982 6.16626 8.27603 6.16626 8C6.16626 7.72397 6.39027 7.50018 6.66626 7.5H9.33325ZM14.1663 2.66699C14.1663 2.57505 14.0921 2.50018 14.0002 2.5H2.00024C1.9082 2.5 1.83325 2.57494 1.83325 2.66699V4.66699C1.83343 4.75889 1.90831 4.83301 2.00024 4.83301H14.0002C14.092 4.83283 14.1661 4.75878 14.1663 4.66699V2.66699ZM15.1663 4.66699C15.1661 5.31107 14.6443 5.83283 14.0002 5.83301H13.8333V12.667C13.8332 13.1531 13.6399 13.6192 13.2961 13.9629C12.9524 14.3066 12.4864 14.4999 12.0002 14.5H4.00024C3.51401 14.5 3.04719 14.3067 2.70337 13.9629C2.35973 13.6192 2.16635 13.153 2.16626 12.667V5.83301H2.00024C1.35602 5.83301 0.833428 5.31117 0.833252 4.66699V2.66699C0.833252 2.02266 1.35591 1.5 2.00024 1.5H14.0002C14.6444 1.50018 15.1663 2.02277 15.1663 2.66699V4.66699Z" fill="currentColor"/>
+                    </svg>
+                  </button>
+                </div>
               {/each}
             </div>
           </div>
@@ -1250,6 +1320,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     padding: 0;
     background: transparent;
     overflow: hidden;
+    border-radius: 8px;
     position: relative;
   }
 
@@ -1262,14 +1333,73 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     position: relative;
     display: flex;
     align-items: flex-start;
-    overflow: clip;
+    overflow: hidden; // Changed from 'clip' — 'clip' can cause scroll escape on macOS WKWebView
     box-sizing: border-box;
     animation: fade-in 0.3s ease-out;
+
     /* UI Scale zoom — scales all contents (text, icons, padding) uniformly */
     zoom: var(--ui-scale, 1);
 
     &.collapsed {
       // Padding is kept the same as expanded mode to prevent layout jump
+    }
+
+    .top-drag-zone {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 24px;
+      z-index: 5; // Behind the actual interactive buttons but above the background
+    }
+
+    /*
+     * Glow fallback for macOS WKWebView: a softly animated box-shadow ring.
+     * Activates alongside AnimatedGradientBorder so there’s always a visible
+     * effect even if the conic-gradient / CSS mask approach fails on WebKit.
+     * Uses 3 layered shadows to simulate a glowing halo without filter:blur.
+     */
+    &.glow-active {
+      box-shadow:
+        0 0  6px 1px color-mix(in srgb, var(--color-accent) 25%, transparent),
+        0 0 14px 4px color-mix(in srgb, var(--color-accent) 15%, transparent),
+        0 0 28px 8px color-mix(in srgb, var(--color-accent) 08%, transparent);
+      animation: fade-in 0.3s ease-out, glow-pulse 3s ease-in-out infinite;
+    }
+
+    /* Timer alert: use a stronger, faster pulse so user notices immediately */
+    &.timer-alerting {
+      box-shadow:
+        0 0  8px 2px color-mix(in srgb, #ea4335 40%, transparent),
+        0 0 20px 6px color-mix(in srgb, #fbbc05 25%, transparent),
+        0 0 36px 12px color-mix(in srgb, #4285f4 15%, transparent);
+      animation: fade-in 0.3s ease-out, glow-alert 1.2s ease-in-out infinite;
+    }
+  }
+
+  @keyframes glow-pulse {
+    0%, 100% { box-shadow:
+      0 0  6px 1px color-mix(in srgb, var(--color-accent) 25%, transparent),
+      0 0 14px 4px color-mix(in srgb, var(--color-accent) 15%, transparent),
+      0 0 28px 8px color-mix(in srgb, var(--color-accent) 08%, transparent);
+    }
+    50% { box-shadow:
+      0 0  8px 2px color-mix(in srgb, var(--color-accent) 40%, transparent),
+      0 0 20px 6px color-mix(in srgb, var(--color-accent) 25%, transparent),
+      0 0 40px 12px color-mix(in srgb, var(--color-accent) 12%, transparent);
+    }
+  }
+
+  @keyframes glow-alert {
+    0%, 100% { box-shadow:
+      0 0  8px 2px color-mix(in srgb, #ea4335 40%, transparent),
+      0 0 20px 6px color-mix(in srgb, #fbbc05 25%, transparent),
+      0 0 36px 12px color-mix(in srgb, #4285f4 15%, transparent);
+    }
+    50% { box-shadow:
+      0 0 12px 4px color-mix(in srgb, #4285f4 55%, transparent),
+      0 0 28px 8px color-mix(in srgb, #34a853 35%, transparent),
+      0 0 48px 16px color-mix(in srgb, #fbbc05 20%, transparent);
     }
   }
 
@@ -1337,7 +1467,11 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     width: 16px;
     height: 16px;
     color: $color-text;
-    transition: color 0.2s ease, opacity 0.2s ease, transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition:
+      color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      transform 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    will-change: transform;
 
     &.collapsed {
       transform: rotate(180deg);
@@ -1400,6 +1534,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     max-height: max(50vh, 200px);
     overflow-y: auto;
     padding-bottom: 16px;
+    // Prevent macOS inertia scroll from escaping the dropdown container
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
 
     // Hide scrollbar
     scrollbar-width: none;
@@ -1424,7 +1561,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     text-align: left;
     color: $color-text;
     opacity: 0.8;
-    transition: all 0.2s ease;
+    transition:
+      opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      background-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     user-select: none;
     position: relative;
 
@@ -1505,7 +1644,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     cursor: pointer;
     color: $color-text;
     opacity: 0.5;
-    transition: all 0.2s ease;
+    transition:
+      color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      background-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     border-radius: 4px;
     display: flex;
     align-items: center;
@@ -1549,7 +1691,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     border: none;
     padding: 0;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition:
+      background-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      transform 0.12s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    will-change: transform;
     z-index: 20; // Above overlay menu
 
     // Invisible pseudo-element to expand hit target area for easy touch/drag
@@ -1582,11 +1727,20 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     inset: -1px;
     z-index: 10;
     border-radius: 12px;
+    /* Windows/default: semi-transparent + blur creates nice glass depth */
     background-color: color-mix(in srgb, var(--bg-focused) 70%, transparent);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    pointer-events: none; // let clicks pass through background
+    pointer-events: none;
     animation: fade-in 0.2s ease-out forwards;
+  }
+
+  /* macOS WKWebView: Tăng opacity lên 85% và bật lại blur để menu không bị trong suốt quá mức
+     làm lộ chữ bên dưới, nhưng vẫn giữ được độ mờ ảo của kính (glassmorphism). */
+  :global([data-os="macos"]) .menu-overlay {
+    background-color: color-mix(in srgb, var(--bg-focused) 85%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
   }
   
   .toolbar {
@@ -1613,19 +1767,31 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     height: 32px;
     padding: 4px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    /* Only transition composited properties — no layout thrash */
+    transition:
+      background-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      transform 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     
     // Starting state for slide-down animation
-    transform: translateY(-10px);
+    // translateZ(0) promotes to its own GPU compositing layer
+    transform: translateY(-10px) translateZ(0);
     opacity: 0;
-    animation: slide-down-fade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    will-change: transform, opacity;
+    animation: slide-down-fade 0.28s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
     
     &:hover, &.drag-hover {
       background: $color-accent; 
       color: var(--color-accent-text, #ffffff);
       opacity: 1 !important;
+      transform: translateY(0) translateZ(0) scale(1.06);
     }
     
+    &:active {
+      transform: translateY(0) translateZ(0) scale(0.94);
+    }
+
     &.active-tool {
       background: rgba($color-accent, 0.06); 
       color: $color-accent;
@@ -1644,6 +1810,31 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     }
   }
 
+  /* macOS: native ease-out (no bounce) + fix washed-out opacity — eliminates stutter in WKWebView */
+  :global([data-os="macos"]) .tool-btn {
+    /* Use dedicated keyframe that ends at 0.78 opacity (not 0.5) */
+    animation: slide-down-fade-mac 0.22s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    transition:
+      background-color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+      color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+
+    &:hover, &.drag-hover {
+      transform: translateY(0) translateZ(0) scale(1.08);
+    }
+
+    &:active {
+      transform: translateY(0) translateZ(0) scale(0.92);
+      transition-duration: 0.07s;
+    }
+
+    /* active-tool: rgba(accent, 0.06) is nearly invisible on macOS — bump it up */
+    &.active-tool {
+      background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    }
+  }
+
   .tool-icon {
     width: 20px;
     height: 20px;
@@ -1651,22 +1842,53 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   
   // Animation delays from right to left
   .delay-0 { animation-delay: 0.00s; }
-  .delay-1 { animation-delay: 0.05s; }
-  .delay-2 { animation-delay: 0.10s; }
-  .delay-3 { animation-delay: 0.15s; }
-  .delay-4 { animation-delay: 0.20s; }
-  .delay-5 { animation-delay: 0.25s; }
+  .delay-1 { animation-delay: 0.04s; }
+  .delay-2 { animation-delay: 0.08s; }
+  .delay-3 { animation-delay: 0.12s; }
+  .delay-4 { animation-delay: 0.16s; }
+  .delay-5 { animation-delay: 0.20s; }
+
+  /* macOS: slightly tighter stagger — feels snappier */
+  :global([data-os="macos"]) {
+    .delay-0 { animation-delay: 0.00s; }
+    .delay-1 { animation-delay: 0.03s; }
+    .delay-2 { animation-delay: 0.06s; }
+    .delay-3 { animation-delay: 0.09s; }
+    .delay-4 { animation-delay: 0.12s; }
+    .delay-5 { animation-delay: 0.15s; }
+  }
   
   @keyframes slide-down-fade {
+    from {
+      transform: translateY(-10px) translateZ(0);
+      opacity: 0;
+    }
     to {
-      transform: translateY(0);
-      opacity: 0.5;
+      transform: translateY(0) translateZ(0);
+      opacity: 0.5; /* Windows default — macOS override below */
+    }
+  }
+
+  /* macOS: WKWebView composites layers differently — 0.5 opacity looks
+     washed-out. Use a higher resting opacity so icons are clearly readable. */
+  @keyframes slide-down-fade-mac {
+    from {
+      transform: translateY(-10px) translateZ(0);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0) translateZ(0);
+      opacity: 0.78;
     }
   }
 
   @keyframes slide-down-full {
+    from {
+      transform: translateY(-10px) translateZ(0);
+      opacity: 0;
+    }
     to {
-      transform: translateY(0);
+      transform: translateY(0) translateZ(0);
       opacity: 1;
     }
   }
@@ -1706,7 +1928,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.2s ease, outline 0.2s ease;
+    transition:
+      transform 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      outline 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    will-change: transform;
     
     &:hover {
       transform: scale(1.1);
@@ -1728,6 +1953,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     overflow-x: hidden;
     width: 100%;
     scroll-padding-bottom: 80px; /* Ensures auto-scroll during typing avoids the fade overlay */
+    // Prevent macOS inertia/momentum scrolling from escaping the container
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
     
     // Hide scrollbar but keep scroll functionality
     -ms-overflow-style: none;  /* IE and Edge */
@@ -1786,7 +2014,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition:
+      opacity 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      background-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     
     &:hover {
       opacity: 1;
@@ -1840,7 +2071,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     border-radius: 4px;
     border: none;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition:
+      background-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
 
   .restore-btn {
@@ -2026,7 +2259,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     text-align: left;
     color: $color-text;
     opacity: 0.7;
-    transition: all 0.2s ease;
+    transition:
+      opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      background-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      border-left-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      padding-left 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     border-left: 2px solid transparent;
     min-width: 0;
 

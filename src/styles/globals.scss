@@ -152,7 +152,28 @@
 
 *, *::before, *::after {
   box-sizing: border-box;
-  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, fill 0.3s ease, stroke 0.3s ease, opacity 0.3s ease;
+  /* Only transition composited-friendly properties — avoids triggering layout/paint on every frame */
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    fill 0.25s ease,
+    stroke 0.25s ease,
+    opacity 0.25s ease;
+}
+
+/* macOS (WKWebView): use deceleration easing that matches Core Animation's default curve.
+   Avoids the micro-stutter caused by bounce/spring easings in Chromium-based WebViews. */
+[data-os="macos"] *,
+[data-os="macos"] *::before,
+[data-os="macos"] *::after {
+  transition:
+    background-color 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    color 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    border-color 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    fill 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    stroke 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 
@@ -167,6 +188,10 @@ html, body {
   // Make background transparent for Tauri transparent window
   background-color: transparent !important;
   overflow: hidden;
+  // Prevent macOS rubber-band / inertia scrolling from shifting the layout
+  overscroll-behavior: none;
+  // Do NOT use touch-scroll momentum on macOS (WKWebView) — let each container handle it
+  -webkit-overflow-scrolling: auto;
 }
 
 // Ensure SvelteKit root div is also transparent and covers screen

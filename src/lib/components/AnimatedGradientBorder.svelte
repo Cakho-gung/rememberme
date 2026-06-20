@@ -1,23 +1,15 @@
 <script lang="ts">
-  // Màu mặc định kiểu Google Gemini
   export let gradientColors: string = '#4285f4, #ea4335, #fbbc05, #34a853, #4285f4';
   export let animationDuration: string = '2s';
-  
-  // Độ dày của viền phát sáng (thật dày theo ý bạn)
-  export let glowWidth: string = '8px';
-  
-  export let blur: string = '40px';
-  
-  // Độ rực rỡ của màu (tăng lên 150% - 200% để màu đậm hơn sau khi bị blur)
-  export let saturation: string = '100%';
-  
-  // Trigger animation khi focus
+  /** Thickness of the visible gradient ring in px or css units */
+  export let ringWidth: string = '10px';
+  /** Border radius of the ring — should match the window/widget corner radius */
+  export let borderRadius: string = '12px';
+  /** Blur applied to the gradient colors for softness within the ring */
+  export let blur: string = '6px';
+  export let saturation: string = '150%';
   export let isFocused: boolean = false;
-  
-  // Hiển thị liên tục không bị mất đi (cho đến khi false)
   export let forceVisible: boolean = false;
-  
-  export let style: string = '';
 
   let visible = false;
   let hideTimeout: ReturnType<typeof setTimeout>;
@@ -37,120 +29,131 @@
   }
 </script>
 
-<div 
-  class="glow-wrapper {visible ? 'show' : ''}"
+<!--
+  Gradient border ring using the CSS padding-box mask technique.
+  
+  HOW IT WORKS:
+    position:fixed; inset:0  →  element covers exact viewport area
+    padding: ringWidth        →  defines ring thickness
+    border-radius: borderRadius → rounds the corners
+    
+    mask layer 1: linear-gradient(white) content-box  → opaque inside padding (interior)
+    mask layer 2: linear-gradient(white)              → opaque everywhere
+    -webkit-mask-composite: destination-out           → layer 2 MINUS layer 1 = only padding ring
+    
+    Result: only the padding border ring area is visible, center is transparent.
+    No mask-composite: exclude or complex shapes needed.
+    
+  WHY -webkit-mask-composite: destination-out:
+    Standard WebKit value for "subtract". NOT "xor" (Blink/Chrome legacy).
+    destination-out = Dst × (1 - Src_alpha) where:
+      Dst = full element (opaque)
+      Src = content-box (opaque in interior)
+      Result = opaque where Dst but NOT Src = the ring/padding area only ✓
+-->
+<div
+  class="glow-outer {visible ? 'show' : ''}"
   style="
+    --ring-width: {ringWidth};
+    --ring-radius: {borderRadius};
+    --gradient-colors: {gradientColors};
+    --animation-duration: {animationDuration};
     --blur-amount: {blur};
     --glow-saturation: {saturation};
-    {style}
   "
+  aria-hidden="true"
 >
-  <div 
-    class="glow-border-container"
-    style="
-      --glow-width: {glowWidth};
-      --gradient-colors: {gradientColors};
-      --animation-duration: {animationDuration};
-    "
-  >
-    <div class="gradient-bg"></div>
+  <div class="glow-ring">
+    <div class="gradient-spinner"></div>
   </div>
 </div>
 
 <style>
-  .glow-wrapper {
-    position: absolute;
+  /* ── Outer wrapper: position + opacity animation only ── */
+  .glow-outer {
+    position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: 99;
     pointer-events: none;
-    
-    /* Cấu hình mặc định cho Light Mode */
-    --breathe-opacity-high: 0.8;
-    --breathe-opacity-low: 0.4;
-    --breathe-brightness-high: 1.4;
-    --breathe-brightness-low: 0.6;
-    
-    /* Blur mạnh để viền màu loang ra đều các hướng. 
-       Việc tách riêng class wrapper giúp ép trình duyệt phải render mask trước rồi mới blur. */
+    will-change: opacity;
+
+    /* Apply blur here so it softens the masked ring inside */
     filter: blur(var(--blur-amount)) saturate(var(--glow-saturation));
-    
+
+    --breathe-hi: 0.95;
+    --breathe-lo: 0.35;
+
     opacity: 0;
-    transform: scale(0.98); /* Bắt đầu nhỏ hơn một chút */
-    transition: opacity 2s ease-in-out, transform 2s ease-in-out;
+    transition: opacity 2s ease-in-out;
   }
 
-  .glow-wrapper.show {
+  .glow-outer.show {
     opacity: 1;
-    transform: scale(1); /* Phóng to ra kích thước thật */
-    transition: opacity 0.5s ease-in, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity 0.5s ease-in;
   }
 
-  /* Ghi đè thông số dịu hơn cho Dark Mode */
-  :global(:root[data-theme="dark"]) .glow-wrapper {
-    --breathe-opacity-high: 0.8;
-    --breathe-opacity-low: 0.2;
-    --breathe-brightness-high: 1;
-    --breathe-brightness-low: 0.5;
+  :global(:root[data-theme="dark"]) .glow-outer {
+    --breathe-hi: 0.9;
+    --breathe-lo: 0.2;
   }
 
-  .glow-border-container {
+  /* ── Gradient ring: rounded-rect border using padding-box mask ── */
+  .glow-ring {
     position: absolute;
     inset: 0;
-    
-    /* Bắt đầu với độ dày viền = 0px để tạo hiệu ứng viền nở ra */
-    padding: 0px;
-    transition: padding 2s ease-in-out;
-    
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
+    border-radius: var(--ring-radius);
+
+    /*
+     * CSS padding-box mask ring technique:
+     *
+     * Two mask layers:
+     *   Layer A (bottom): linear-gradient white → covers FULL element
+     *   Layer B (top):    linear-gradient white content-box → covers INTERIOR (inside padding)
+     *
+     * -webkit-mask-composite: destination-out
+     *   = "show Layer A EXCEPT where Layer B covers"
+     *   = "show full element EXCEPT the interior"
+     *   = only the padding border ring is visible ✓
+     *
+     * The ring width/shape is controlled by `padding` and `border-radius`.
+     */
+    padding: var(--ring-width);
+
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: destination-out;
+
+    mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
     mask-composite: exclude;
-    
-    border-radius: inherit;
-    
-    /* Chạy nhịp thở liên tục, độc lập với transition ẩn/hiện */
+
+    /* Breathing animation */
     animation: breathe 3s ease-in-out infinite;
   }
 
-  .glow-wrapper.show .glow-border-container {
-    padding: var(--glow-width); /* Nở ra đúng độ dày gốc */
-    transition: padding 0.6s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .gradient-bg {
+  /* ── Spinning conic gradient that fills the ring ── */
+  .gradient-spinner {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 150vmax;
-    height: 150vmax;
-    background: conic-gradient(
-      from 0deg,
-      var(--gradient-colors)
-    );
-    animation: spin var(--animation-duration) linear infinite;
+    /* Must be large enough to fill the entire glow-ring at any rotation */
+    width: 200vmax;
+    height: 200vmax;
+    background: conic-gradient(from 0deg, var(--gradient-colors));
     transform-origin: center;
-    opacity: 1;
+    will-change: transform;
+    animation: spin var(--animation-duration) linear infinite;
   }
 
   @keyframes spin {
-    from {
-      transform: translate(-50%, -50%) rotate(0deg);
-    }
-    to {
-      transform: translate(-50%, -50%) rotate(360deg);
-    }
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
   }
 
   @keyframes breathe {
-    0%, 100% {
-      transform: scale(1.04);
-      opacity: var(--breathe-opacity-high);
-      filter: brightness(var(--breathe-brightness-high));
-    }
-    50% {
-      transform: scale(0.96);
-      opacity: var(--breathe-opacity-low);
-      filter: brightness(var(--breathe-brightness-low));
-    }
+    0%, 100% { opacity: var(--breathe-hi); }
+    50%      { opacity: var(--breathe-lo); }
   }
 </style>
