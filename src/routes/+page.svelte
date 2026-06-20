@@ -151,6 +151,7 @@
     const note = mockNotes.find((n) => n.id === activeNoteId);
     if (note) {
       note.archived = true;
+      note.archivedAt = Date.now();
       scheduleSaveIndex();
       // Select next unarchived
       const nextUnarchived = mockNotes.find((n) => !n.archived);
@@ -166,6 +167,7 @@
     const note = mockNotes.find((n) => n.id === id);
     if (note) {
       note.archived = true;
+      note.archivedAt = Date.now();
       scheduleSaveIndex();
     }
   }
@@ -188,6 +190,7 @@
     const note = mockNotes.find((n) => n.id === id);
     if (note) {
       note.archived = false;
+      note.archivedAt = undefined;
       scheduleSaveIndex();
       if (!activeNote) {
         selectNote(note.id);
@@ -333,6 +336,13 @@
         await togglePin();
         return;
       }
+    }
+
+    // Close trash overlay on Escape or Backspace
+    if (isTrashOpen && (e.key === "Escape" || e.key === "Backspace")) {
+      e.preventDefault();
+      closeTrash();
+      return;
     }
   }
 
@@ -732,6 +742,66 @@
       saveNoteContent(id, content);
     }, 500);
   }
+
+  // ── Trash Time Grouping ──
+  type TrashTimeGroup =
+    | "Today"
+    | "Yesterday"
+    | "Last 2 days"
+    | "Last 3 days"
+    | "Last week"
+    | "Long time ago";
+
+  function getTrashTimeGroup(archivedAt: number | undefined): TrashTimeGroup {
+    if (!archivedAt) return "Long time ago";
+    const now = new Date();
+    const archived = new Date(archivedAt);
+
+    // Reset to start of day for accurate day-based comparison
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    ).getTime();
+    const archivedDayStart = new Date(
+      archived.getFullYear(),
+      archived.getMonth(),
+      archived.getDate(),
+    ).getTime();
+    const daysDiff = Math.floor(
+      (todayStart - archivedDayStart) / (1000 * 60 * 60 * 24),
+    );
+
+    if (daysDiff === 0) return "Today";
+    if (daysDiff === 1) return "Yesterday";
+    if (daysDiff === 2) return "Last 2 days";
+    if (daysDiff === 3) return "Last 3 days";
+    if (daysDiff <= 7) return "Last week";
+    return "Long time ago";
+  }
+
+  const trashGroupOrder: TrashTimeGroup[] = [
+    "Today",
+    "Yesterday",
+    "Last 2 days",
+    "Last 3 days",
+    "Last week",
+    "Long time ago",
+  ];
+
+  let groupedTrashNotes = $derived.by(() => {
+    const archivedNotes = mockNotes.filter((n) => n.archived);
+    const groups = new Map<TrashTimeGroup, typeof archivedNotes>();
+    for (const note of archivedNotes) {
+      const group = getTrashTimeGroup(note.archivedAt);
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group)!.push(note);
+    }
+    // Return in order
+    return trashGroupOrder
+      .filter((g) => groups.has(g))
+      .map((g) => ({ label: g, notes: groups.get(g)! }));
+  });
 
   onMount(async () => {
     // Detect OS and add data-os attribute to <html> for platform-specific CSS
@@ -1151,7 +1221,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   function handleGlobalMouseOver(e: MouseEvent) {
     if (!(e.target instanceof Element)) return;
     const btn = e.target.closest(
-      ".tool-btn, .title-icon-btn, .timer-btn, .archive-item-btn, .dropdown-item, .trash-item-actions button, .close-dot",
+      ".tool-btn, .title-icon-btn, .timer-btn, .archive-item-btn, .dropdown-item, .trash-item-actions button, .trash-back-btn, .trash-icon-btn, .close-dot",
     );
     if (btn && btn !== lastHoveredBtn) {
       playHover();
@@ -1293,50 +1363,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       {#if !isCollapsed}
         <!-- Text editor area -->
         <div class="text-editor" id="note-scroll-area">
-          {#if isTrashOpen}
-            <div class="trash-view" transition:fade={{ duration: 150 }}>
-              <div class="trash-header">
-                <h3>Thùng rác</h3>
-                <button
-                  class="close-trash-btn"
-                  onclick={closeTrash}
-                  aria-label="Close Trash"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M11.6464 3.64645C11.8417 3.45118 12.1582 3.45118 12.3535 3.64645C12.5487 3.84171 12.5487 4.15822 12.3535 4.35348L8.70699 7.99996L12.3535 11.6464C12.5487 11.8417 12.5487 12.1582 12.3535 12.3535C12.1582 12.5487 11.8417 12.5487 11.6464 12.3535L7.99996 8.70699L4.35348 12.3535C4.15822 12.5487 3.84171 12.5487 3.64645 12.3535C3.45118 12.1582 3.45118 11.8417 3.64645 11.6464L7.29293 7.99996L3.64645 4.35348C3.45118 4.15822 3.45118 3.84171 3.64645 3.64645C3.84171 3.45118 4.15822 3.45118 4.35348 3.64645L7.99996 7.29293L11.6464 3.64645Z"
-                    />
-                  </svg>
-                </button>
-              </div>
-              <div class="trash-list">
-                {#each mockNotes.filter((n) => n.archived) as note}
-                  <div class="trash-item">
-                    <span class="trash-item-title">{note.title}</span>
-                    <div class="trash-item-actions">
-                      <button
-                        class="restore-btn"
-                        onclick={() => restoreNote(note.id)}>Khôi phục</button
-                      >
-                      <button
-                        class="delete-btn"
-                        onclick={() => permanentlyDeleteNote(note.id)}
-                        >Xóa</button
-                      >
-                    </div>
-                  </div>
-                {:else}
-                  <div class="empty-trash">Thùng rác trống</div>
-                {/each}
-              </div>
-            </div>
-          {:else if !isLoading && activeNote && activeNote.content !== null}
+          {#if !isLoading && activeNote && activeNote.content !== null}
             <Editor
               noteId={activeNote.id}
               content={activeNote.content}
@@ -1769,6 +1796,106 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     {#if isSettingsOpen}
       <SettingsPanel onClose={closeSettings} />
     {/if}
+
+    <!-- Trash Bin Overlay -->
+    {#if isTrashOpen}
+      <div class="trash-overlay" out:fade={{ duration: 150 }}>
+        <!-- Header with back button -->
+        <div class="trash-overlay-header">
+          <button class="trash-back-btn" onclick={closeTrash} aria-label="Back">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10.3535 3.64645C10.5488 3.84171 10.5488 4.15829 10.3535 4.35355L6.70711 8L10.3535 11.6464C10.5488 11.8417 10.5488 12.1583 10.3535 12.3536C10.1583 12.5488 9.84171 12.5488 9.64645 12.3536L5.64645 8.35355C5.45118 8.15829 5.45118 7.84171 5.64645 7.64645L9.64645 3.64645C9.84171 3.45118 10.1583 3.45118 10.3535 3.64645Z"
+              />
+            </svg>
+          </button>
+          <span class="trash-overlay-title">Trash bin</span>
+
+          <!-- Chevron icon for collapse/expand -->
+          <button
+            class="title-icon-btn"
+            onclick={toggleCollapse}
+            aria-label="Toggle Collapse"
+          >
+            <svg
+              class="title-icon"
+              class:collapsed={isCollapsed}
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M7.66988 5.49915C7.90277 5.34536 8.21875 5.37127 8.42378 5.5763L12.4238 9.5763C12.6581 9.81062 12.6581 10.1896 12.4238 10.424C12.1895 10.6583 11.8104 10.6583 11.5761 10.424L7.99995 6.84779L4.42378 10.424C4.18947 10.6583 3.81044 10.6583 3.57613 10.424C3.34181 10.1896 3.34181 9.81062 3.57613 9.5763L7.57613 5.5763L7.66988 5.49915Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Trash list with time groups -->
+        <div class="trash-overlay-list">
+          {#each groupedTrashNotes as group}
+            <div class="trash-time-group">
+              <div class="trash-time-label">{group.label}</div>
+              {#each group.notes as note}
+                <div class="trash-item">
+                  <span class="trash-bullet">·</span>
+                  <span class="trash-item-title">{note.title}</span>
+                  <div class="trash-item-actions">
+                    <button
+                      class="trash-icon-btn restore-icon-btn"
+                      onclick={() => restoreNote(note.id)}
+                      aria-label="Restore"
+                    >
+                      <!-- Undo/Restore icon -->
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M4.85355 3.14645C5.04882 3.34171 5.04882 3.65829 4.85355 3.85355L3.20711 5.5H9.5C11.433 5.5 13 7.067 13 9C13 10.933 11.433 12.5 9.5 12.5H7C6.72386 12.5 6.5 12.2761 6.5 12C6.5 11.7239 6.72386 11.5 7 11.5H9.5C10.8807 11.5 12 10.3807 12 9C12 7.61929 10.8807 6.5 9.5 6.5H3.20711L4.85355 8.14645C5.04882 8.34171 5.04882 8.65829 4.85355 8.85355C4.65829 9.04882 4.34171 9.04882 4.14645 8.85355L1.64645 6.35355C1.45118 6.15829 1.45118 5.84171 1.64645 5.64645L4.14645 3.14645C4.34171 2.95118 4.65829 2.95118 4.85355 3.14645Z"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      class="trash-icon-btn delete-icon-btn"
+                      onclick={() => permanentlyDeleteNote(note.id)}
+                      aria-label="Delete permanently"
+                    >
+                      <!-- Trash/delete icon -->
+                      <svg
+                        width="28"
+                        height="28"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          d="M13.667 18.833V15.5C13.667 15.224 13.443 15.0002 13.167 15C12.8909 15 12.667 15.2239 12.667 15.5V18.833C12.667 19.1091 12.8908 19.333 13.167 19.333C13.443 19.3328 13.667 19.109 13.667 18.833ZM16.333 17.5V15.5C16.333 15.2239 16.1091 15 15.833 15C15.557 15.0002 15.333 15.224 15.333 15.5V17.5C15.333 17.776 15.557 17.9998 15.833 18C16.1092 18 16.333 17.7761 16.333 17.5ZM8.33301 17.5V15.5C8.333 15.2239 8.10915 15 7.83301 15C7.55702 15.0002 7.33301 15.224 7.33301 15.5V17.5C7.33301 17.776 7.55702 17.9998 7.83301 18C8.10915 18 8.33301 17.7761 8.33301 17.5ZM11 16.833V15.5C11 15.2239 10.7761 15 10.5 15C10.2239 15 10 15.2239 10 15.5V16.833C10 17.1091 10.2239 17.333 10.5 17.333C10.7761 17.333 11 17.1091 11 16.833ZM10.5 5V5.00098C10.2233 5.00046 9.94908 5.05342 9.69336 5.15918C9.43756 5.26504 9.20529 5.42121 9.00977 5.61719H9.00879L6.61719 8.00879H6.61816C6.42175 8.2045 6.26521 8.43715 6.15918 8.69336C6.05341 8.94908 5.99948 9.22328 6 9.5V12.333H5.16699C4.89096 12.333 4.66717 12.557 4.66699 12.833C4.66699 13.1091 4.89085 13.333 5.16699 13.333H18.5C18.7761 13.333 19 13.1091 19 12.833C18.9998 12.557 18.776 12.333 18.5 12.333H17.667V6.83301C17.6669 6.34697 17.4735 5.88083 17.1299 5.53711C16.7861 5.19329 16.3192 5 15.833 5H10.5ZM10 8.83301C10 8.87721 9.98243 8.91992 9.95117 8.95117C9.91992 8.98243 9.87721 9 9.83301 9H7.11914C7.17193 8.89563 7.24016 8.79961 7.32324 8.7168L9.7168 6.32324C9.79961 6.24016 9.89563 6.17192 10 6.11914V8.83301ZM16.667 12.333H7V10H9.83301C10.1424 10 10.4394 9.877 10.6582 9.6582C10.877 9.43941 11 9.14243 11 8.83301V6H15.833C16.054 6 16.2666 6.08786 16.4229 6.24414C16.579 6.40033 16.6669 6.61219 16.667 6.83301V12.333Z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="empty-trash">Trash bin is empty</div>
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 </main>
 
@@ -2046,7 +2173,6 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   .dropdown-item {
     background: transparent;
     border: none;
-    border-top: 1px solid var(--dropdown-divider-bg, rgba(0, 0, 0, 0.1));
     padding-top: 12px;
     padding-bottom: 12px;
     padding-left: 6px;
@@ -2141,7 +2267,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     margin: -2px 0;
     cursor: pointer;
     color: $color-text;
-    opacity: 0.5;
+    opacity: 0;
     transition:
       color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
       opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
@@ -2151,9 +2277,13 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     align-items: center;
     justify-content: center;
 
+    .dropdown-item:hover & {
+      opacity: 0.5;
+    }
+
     &:hover {
       color: $color-accent;
-      opacity: 1;
+      opacity: 1 !important;
     }
   }
 
@@ -2504,39 +2634,48 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     transition: background-color 0.3s ease;
   }
 
-  // ── Trash View ──
-  .trash-view {
+  .trash-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 25; // Above menu-overlay (10) and close-dot (20)
+    border-radius: 8px;
+    background-color: var(--bg-focused);
     display: flex;
     flex-direction: column;
-    width: 100%;
-    height: 100%;
-    padding: 0 16px 20px 16px;
-    box-sizing: border-box;
     color: var(--color-text);
+    overflow: hidden;
+
+    // Enter animation only — exit handled by Svelte out:fade
+    animation: trash-slide-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
-  .trash-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-
-    h3 {
-      font-family: $font-family-base;
-      font-size: 14px;
-      font-weight: 600;
-      margin: 0;
+  @keyframes trash-slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
     }
   }
 
-  .close-trash-btn {
+  .trash-overlay-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 12px 12px 16px;
+    flex-shrink: 0;
+  }
+
+  .trash-back-btn {
     background: transparent;
     border: none;
     color: var(--color-text);
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: pointer;
     padding: 4px;
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2550,76 +2689,140 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       background: var(--color-accent);
       color: var(--color-accent-text);
     }
+
+    &:active {
+      transform: scale(0.92);
+    }
   }
 
-  .trash-list {
+  .trash-overlay-title {
+    font-family: $font-family-mono;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
+    color: var(--color-text, #111);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .trash-overlay-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
     overflow-y: auto;
     flex: 1;
+    padding: 0 16px 20px 16px;
+
+    // Prevent macOS inertia scroll escape
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
+
+    // Hide scrollbar
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .trash-time-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4px;
+    margin-left: 12px;
+  }
+
+  .trash-time-label {
+    font-family: $font-family-mono;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-accent);
+    opacity: 0.85;
+    padding: 8px 4px 8px 18px;
+    letter-spacing: 0.02em;
   }
 
   .trash-item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(128, 128, 128, 0.1);
-    transition: background 0.2s ease;
+    gap: 6px;
+    border-radius: 4px;
+    padding-left: 8px;
+    cursor: default;
+    color: $color-text;
+    opacity: 0.7;
+    border-left: 2px solid transparent;
+    transition:
+      opacity 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      background-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      border-left-color 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      padding-left 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    min-width: 0;
 
     &:hover {
-      background: rgba(128, 128, 128, 0.15);
+      opacity: 1;
+      background: rgba(128, 128, 128, 0.08);
+      border-left: 2px solid $color-accent;
+      padding-left: 12px;
     }
+  }
+
+  .trash-bullet {
+    opacity: 0.5;
+    font-size: 10px;
+    flex-shrink: 0;
   }
 
   .trash-item-title {
     font-family: $font-family-mono;
     font-size: 12px;
+    font-weight: 400;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-right: 12px;
+    flex: 1;
+    min-width: 0;
   }
 
   .trash-item-actions {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     flex-shrink: 0;
   }
 
-  .restore-btn,
-  .delete-btn {
-    font-family: $font-family-base;
-    font-size: 11px;
-    font-weight: 500;
-    padding: 4px 8px;
-    border-radius: 4px;
+  .trash-icon-btn {
+    background: transparent;
     border: none;
+    padding: 4px;
+    border-radius: 6px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text);
+    opacity: 0.7;
     transition:
+      opacity 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
       background-color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-      color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  }
+      color 0.15s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+      transform 0.12s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 
-  .restore-btn {
-    background: rgba(56, 170, 87, 0.15);
-    color: #38aa57;
-
-    &:hover {
-      background: #38aa57;
-      color: white;
+    &:active {
+      transform: scale(0.88);
     }
   }
 
-  .delete-btn {
-    background: rgba(243, 52, 58, 0.15);
-    color: #f3343a;
-
+  .restore-icon-btn {
     &:hover {
-      background: #f3343a;
-      color: white;
+      opacity: 1;
+      color: #38aa57;
+    }
+  }
+
+  .delete-icon-btn {
+    &:hover {
+      opacity: 1;
+      color: #f3343a;
     }
   }
 
@@ -2627,9 +2830,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     font-family: $font-family-base;
     font-size: 13px;
     color: var(--color-text);
-    opacity: 0.5;
+    opacity: 0.4;
     text-align: center;
-    padding-top: 24px;
+    padding-top: 48px;
+    font-style: italic;
   }
 
   .editor-content {

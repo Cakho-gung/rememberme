@@ -13,6 +13,7 @@ export interface NoteMeta {
   id: number;
   title: string;
   archived: boolean;
+  archivedAt?: number; // Unix timestamp (ms) when the note was archived
 }
 
 export interface Note extends NoteMeta {
@@ -98,7 +99,7 @@ export async function loadNoteContent(id: number): Promise<object | string | nul
 export async function saveIndex(notes: NoteMeta[]): Promise<void> {
   try {
     await ensureDir();
-    const metas = notes.map(n => ({ id: n.id, title: n.title, archived: n.archived }));
+    const metas = notes.map(n => ({ id: n.id, title: n.title, archived: n.archived, ...(n.archivedAt ? { archivedAt: n.archivedAt } : {}) }));
     await writeTextFile(INDEX_FILE, JSON.stringify(metas, null, 2), {
       baseDir: BaseDirectory.Document,
     });
