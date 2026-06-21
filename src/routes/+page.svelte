@@ -68,9 +68,14 @@
 
   async function handleCheckUpdate() {
     updateStatusMessage = "Checking...";
-    const update = await checkForAppUpdates();
-    if (update) {
+    const result = await checkForAppUpdates();
+    if (result.hasUpdate) {
       updateStatusMessage = "";
+    } else if (result.error) {
+      updateStatusMessage = "Check failed: " + result.error;
+      setTimeout(() => {
+        updateStatusMessage = "";
+      }, 5000);
     } else {
       updateStatusMessage = "Your app is the newest one 🎉";
       setTimeout(() => {
