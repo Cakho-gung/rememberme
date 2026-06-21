@@ -1,0 +1,34 @@
+﻿2026-06-21T15:52:19.2843463Z Current runner version: '2.335.1'
+2026-06-21T15:52:19.2863945Z ##[group]Runner Image Provisioner
+2026-06-21T15:52:19.2864670Z Hosted Compute Agent
+2026-06-21T15:52:19.2865436Z Version: 20260611.554
+2026-06-21T15:52:19.2865966Z Commit: 5e0782fdc9014723d3be820dd114dd31555c2bd1
+2026-06-21T15:52:19.2866599Z Build Date: 2026-06-11T21:40:46Z
+2026-06-21T15:52:19.2867203Z Worker ID: {c27f1439-34e6-4e28-8dd7-da38b5ffbd69}
+2026-06-21T15:52:19.2867828Z Azure Region: westcentralus
+2026-06-21T15:52:19.2868414Z ##[endgroup]
+2026-06-21T15:52:19.2869499Z ##[group]Operating System
+2026-06-21T15:52:19.2870073Z Ubuntu
+2026-06-21T15:52:19.2870548Z 22.04.5
+2026-06-21T15:52:19.2870985Z LTS
+2026-06-21T15:52:19.2871552Z ##[endgroup]
+2026-06-21T15:52:19.2872017Z ##[group]Runner Image
+2026-06-21T15:52:19.2872551Z Image: ubuntu-22.04
+2026-06-21T15:52:19.2873043Z Version: 20260617.186.1
+2026-06-21T15:52:19.2873898Z Included Software: https://github.com/actions/runner-images/blob/ubuntu22/20260617.186/images/ubuntu/Ubuntu2204-Readme.md
+2026-06-21T15:52:19.2875514Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu22%2F20260617.186
+2026-06-21T15:52:19.2876618Z ##[endgroup]
+2026-06-21T15:52:19.2877580Z ##[group]GITHUB_TOKEN Permissions
+2026-06-21T15:52:19.2879309Z Contents: write
+2026-06-21T15:52:19.2879855Z Metadata: read
+2026-06-21T15:52:19.2880379Z ##[endgroup]
+2026-06-21T15:52:19.2882297Z Secret source: Actions
+2026-06-21T15:52:19.2882916Z Prepare workflow directory
+2026-06-21T15:52:19.3137577Z Prepare all required actions
+2026-06-21T15:52:19.3168155Z Getting action download info
+2026-06-21T15:52:19.6317671Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)
+2026-06-21T15:52:19.7591205Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-06-21T15:52:19.9853981Z Download action repository 'dtolnay/rust-toolchain@stable' (SHA:29eef336d9b2848a0b548edc03f92a220660cdb8)
+2026-06-21T15:52:20.2060901Z Download action repository 'swatinem/rust-cache@v2' (SHA:e18b497796c12c097a38f9edb9d0641fb99eee32)
+2026-06-21T15:52:20.9383762Z Download action repository 'tauri-apps/tauri-action@v0' (SHA:84b9d35b5fc46c1e45415bdb6144030364f7ebc5)
+2026-06-21T15:52:22.1633405Z Complete job name: publish-tauri (ubuntu-22.04)

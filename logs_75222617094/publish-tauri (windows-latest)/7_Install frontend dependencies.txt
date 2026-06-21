@@ -1,0 +1,24 @@
+﻿2026-06-21T15:53:10.9378864Z ##[group]Run npm ci
+2026-06-21T15:53:10.9379216Z [36;1mnpm ci[0m
+2026-06-21T15:53:11.1219141Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-06-21T15:53:11.1219517Z env:
+2026-06-21T15:53:11.1219729Z   CARGO_HOME: C:\Users\runneradmin\.cargo
+2026-06-21T15:53:11.1220010Z   CARGO_INCREMENTAL: 0
+2026-06-21T15:53:11.1220229Z   CARGO_TERM_COLOR: always
+2026-06-21T15:53:11.1220478Z   CACHE_ON_FAILURE: false
+2026-06-21T15:53:11.1220700Z ##[endgroup]
+2026-06-21T15:53:51.2951215Z 
+2026-06-21T15:53:51.2951884Z added 160 packages, and audited 161 packages in 18s
+2026-06-21T15:53:51.2952363Z 
+2026-06-21T15:53:51.2955073Z 65 packages are looking for funding
+2026-06-21T15:53:51.2956515Z   run `npm fund` for details
+2026-06-21T15:53:51.3075474Z 
+2026-06-21T15:53:51.3076114Z 4 vulnerabilities (3 low, 1 high)
+2026-06-21T15:53:51.3076489Z 
+2026-06-21T15:53:51.3076843Z To address issues that do not require attention, run:
+2026-06-21T15:53:51.3077407Z   npm audit fix
+2026-06-21T15:53:51.3077694Z 
+2026-06-21T15:53:51.3078060Z To address all issues (including breaking changes), run:
+2026-06-21T15:53:51.3079000Z   npm audit fix --force
+2026-06-21T15:53:51.3079305Z 
+2026-06-21T15:53:51.3079545Z Run `npm audit` for details.

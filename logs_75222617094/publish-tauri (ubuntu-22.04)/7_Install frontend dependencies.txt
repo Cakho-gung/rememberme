@@ -1,0 +1,24 @@
+﻿2026-06-21T15:53:15.8269350Z ##[group]Run npm ci
+2026-06-21T15:53:15.8269554Z [36;1mnpm ci[0m
+2026-06-21T15:53:15.8325882Z shell: /usr/bin/bash -e {0}
+2026-06-21T15:53:15.8326098Z env:
+2026-06-21T15:53:15.8326274Z   CARGO_HOME: /home/runner/.cargo
+2026-06-21T15:53:15.8326503Z   CARGO_INCREMENTAL: 0
+2026-06-21T15:53:15.8326689Z   CARGO_TERM_COLOR: always
+2026-06-21T15:53:15.8326880Z   CACHE_ON_FAILURE: false
+2026-06-21T15:53:15.8327065Z ##[endgroup]
+2026-06-21T15:53:20.8962071Z 
+2026-06-21T15:53:20.8962741Z added 162 packages, and audited 163 packages in 5s
+2026-06-21T15:53:20.8963004Z 
+2026-06-21T15:53:20.8963478Z 66 packages are looking for funding
+2026-06-21T15:53:20.8964194Z   run `npm fund` for details
+2026-06-21T15:53:20.9055223Z 
+2026-06-21T15:53:20.9055712Z 4 vulnerabilities (3 low, 1 high)
+2026-06-21T15:53:20.9055937Z 
+2026-06-21T15:53:20.9056125Z To address issues that do not require attention, run:
+2026-06-21T15:53:20.9056397Z   npm audit fix
+2026-06-21T15:53:20.9056506Z 
+2026-06-21T15:53:20.9056689Z To address all issues (including breaking changes), run:
+2026-06-21T15:53:20.9057042Z   npm audit fix --force
+2026-06-21T15:53:20.9057168Z 
+2026-06-21T15:53:20.9057267Z Run `npm audit` for details.

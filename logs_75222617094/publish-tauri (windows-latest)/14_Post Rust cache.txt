@@ -1,0 +1,42 @@
+﻿2026-06-21T16:01:58.6206136Z Post job cleanup.
+2026-06-21T16:01:58.9497221Z ##[group]Cache Configuration
+2026-06-21T16:01:58.9499204Z Cache Provider:
+2026-06-21T16:01:58.9499697Z     github
+2026-06-21T16:01:58.9500094Z Workspaces:
+2026-06-21T16:01:58.9500605Z     D:\a\rememberme\rememberme\src-tauri
+2026-06-21T16:01:58.9501198Z Cache Paths:
+2026-06-21T16:01:58.9501995Z     C:\Users\runneradmin\.cargo\bin
+2026-06-21T16:01:58.9502915Z     C:\Users\runneradmin\.cargo\.crates.toml
+2026-06-21T16:01:58.9503552Z     C:\Users\runneradmin\.cargo\.crates2.json
+2026-06-21T16:01:58.9505735Z     C:\Users\runneradmin\.cargo\registry
+2026-06-21T16:01:58.9506721Z     C:\Users\runneradmin\.cargo\git
+2026-06-21T16:01:58.9507406Z     D:\a\rememberme\rememberme\src-tauri\target
+2026-06-21T16:01:58.9507961Z Restore Key:
+2026-06-21T16:01:58.9508367Z     v0-rust-publish-tauri-Windows_NT-x64-5dcabeed
+2026-06-21T16:01:58.9508759Z Cache Key:
+2026-06-21T16:01:58.9509109Z     v0-rust-publish-tauri-Windows_NT-x64-5dcabeed-d85377c7
+2026-06-21T16:01:58.9509620Z .. Prefix:
+2026-06-21T16:01:58.9509926Z   - v0-rust-publish-tauri-Windows_NT-x64
+2026-06-21T16:01:58.9510303Z .. Environment considered:
+2026-06-21T16:01:58.9510874Z   - Rust Versions:
+2026-06-21T16:01:58.9511323Z     - 1.96.0 x86_64-pc-windows-msvc ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+2026-06-21T16:01:58.9511893Z     - 1.96.0 x86_64-pc-windows-msvc ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+2026-06-21T16:01:58.9512309Z   - CARGO_HOME
+2026-06-21T16:01:58.9512560Z   - CARGO_INCREMENTAL
+2026-06-21T16:01:58.9512849Z   - CARGO_TERM_COLOR
+2026-06-21T16:01:58.9513137Z .. Lockfiles considered:
+2026-06-21T16:01:58.9513487Z   - D:\a\rememberme\rememberme\src-tauri\Cargo.lock
+2026-06-21T16:01:58.9513909Z   - D:\a\rememberme\rememberme\src-tauri\Cargo.toml
+2026-06-21T16:01:58.9514463Z ##[endgroup]
+2026-06-21T16:01:58.9514619Z 
+2026-06-21T16:01:58.9539624Z (node:7492) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-06-21T16:01:58.9540770Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-06-21T16:02:26.7595276Z ... Cleaning D:\a\rememberme\rememberme\src-tauri\target ...
+2026-06-21T16:02:26.8298126Z ... Cleaning cargo registry (cache-all-crates: false) ...
+2026-06-21T16:02:34.1867115Z ... Cleaning cargo/bin ...
+2026-06-21T16:02:34.1942866Z ... Cleaning cargo git cache ...
+2026-06-21T16:02:34.1950210Z ... Saving cache ...
+2026-06-21T16:02:34.3282879Z [command]"C:\Program Files\Git\usr\bin\tar.exe" --posix -cf cache.tzst --exclude cache.tzst -P -C D:/a/rememberme/rememberme --files-from manifest.txt --force-local --use-compress-program "zstd -T0"
+2026-06-21T16:02:43.7507563Z Sent 0 of 475798899 (0.0%), 0.0 MBs/sec
+2026-06-21T16:02:44.7506760Z Sent 6036851 of 475798899 (1.3%), 2.9 MBs/sec
+2026-06-21T16:02:45.4723616Z Sent 475798899 of 475798899 (100.0%), 165.6 MBs/sec

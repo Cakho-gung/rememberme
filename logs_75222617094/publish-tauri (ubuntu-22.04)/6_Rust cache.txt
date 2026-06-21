@@ -1,0 +1,53 @@
+﻿2026-06-21T15:53:14.9455410Z ##[group]Run swatinem/rust-cache@v2
+2026-06-21T15:53:14.9455657Z with:
+2026-06-21T15:53:14.9455837Z   workspaces: ./src-tauri -> target
+2026-06-21T15:53:14.9456051Z   prefix-key: v0-rust
+2026-06-21T15:53:14.9456232Z   add-job-id-key: true
+2026-06-21T15:53:14.9456437Z   add-rust-environment-hash-key: true
+2026-06-21T15:53:14.9456653Z   cache-targets: true
+2026-06-21T15:53:14.9456831Z   cache-all-crates: false
+2026-06-21T15:53:14.9457026Z   cache-workspace-crates: false
+2026-06-21T15:53:14.9457225Z   save-if: true
+2026-06-21T15:53:14.9457400Z   cache-provider: github
+2026-06-21T15:53:14.9457586Z   cache-bin: true
+2026-06-21T15:53:14.9457762Z   lookup-only: false
+2026-06-21T15:53:14.9457933Z   cmd-format: {0}
+2026-06-21T15:53:14.9458093Z env:
+2026-06-21T15:53:14.9458261Z   CARGO_HOME: /home/runner/.cargo
+2026-06-21T15:53:14.9458472Z   CARGO_INCREMENTAL: 0
+2026-06-21T15:53:14.9458822Z   CARGO_TERM_COLOR: always
+2026-06-21T15:53:14.9459009Z ##[endgroup]
+2026-06-21T15:53:15.1637236Z (node:3918) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-06-21T15:53:15.1638426Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-06-21T15:53:15.6359342Z ##[group]Cache Configuration
+2026-06-21T15:53:15.6360029Z Cache Provider:
+2026-06-21T15:53:15.6360315Z     github
+2026-06-21T15:53:15.6360573Z Workspaces:
+2026-06-21T15:53:15.6360975Z     /home/runner/work/rememberme/rememberme/src-tauri
+2026-06-21T15:53:15.6361371Z Cache Paths:
+2026-06-21T15:53:15.6361638Z     /home/runner/.cargo/bin
+2026-06-21T15:53:15.6361994Z     /home/runner/.cargo/.crates.toml
+2026-06-21T15:53:15.6362410Z     /home/runner/.cargo/.crates2.json
+2026-06-21T15:53:15.6362777Z     /home/runner/.cargo/registry
+2026-06-21T15:53:15.6363088Z     /home/runner/.cargo/git
+2026-06-21T15:53:15.6363526Z     /home/runner/work/rememberme/rememberme/src-tauri/target
+2026-06-21T15:53:15.6363998Z Restore Key:
+2026-06-21T15:53:15.6364346Z     v0-rust-publish-tauri-Linux-x64-4107bf91
+2026-06-21T15:53:15.6364736Z Cache Key:
+2026-06-21T15:53:15.6365287Z     v0-rust-publish-tauri-Linux-x64-4107bf91-d85377c7
+2026-06-21T15:53:15.6365761Z .. Prefix:
+2026-06-21T15:53:15.6366076Z   - v0-rust-publish-tauri-Linux-x64
+2026-06-21T15:53:15.6366467Z .. Environment considered:
+2026-06-21T15:53:15.6366787Z   - Rust Versions:
+2026-06-21T15:53:15.6367271Z     - 1.96.0 x86_64-unknown-linux-gnu ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+2026-06-21T15:53:15.6368046Z     - 1.96.0 x86_64-unknown-linux-gnu ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+2026-06-21T15:53:15.6368544Z   - CARGO_HOME
+2026-06-21T15:53:15.6368808Z   - CARGO_INCREMENTAL
+2026-06-21T15:53:15.6369087Z   - CARGO_TERM_COLOR
+2026-06-21T15:53:15.6369399Z .. Lockfiles considered:
+2026-06-21T15:53:15.6369847Z   - /home/runner/work/rememberme/rememberme/src-tauri/Cargo.lock
+2026-06-21T15:53:15.6370463Z   - /home/runner/work/rememberme/rememberme/src-tauri/Cargo.toml
+2026-06-21T15:53:15.6371116Z ##[endgroup]
+2026-06-21T15:53:15.6371266Z 
+2026-06-21T15:53:15.6371426Z ... Restoring cache ...
+2026-06-21T15:53:15.8171973Z No cache found.

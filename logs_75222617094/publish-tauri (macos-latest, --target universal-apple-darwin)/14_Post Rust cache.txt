@@ -1,0 +1,45 @@
+﻿2026-06-21T15:59:21.2193960Z Post job cleanup.
+2026-06-21T15:59:21.5066060Z ##[group]Cache Configuration
+2026-06-21T15:59:21.5066630Z Cache Provider:
+2026-06-21T15:59:21.5066860Z     github
+2026-06-21T15:59:21.5067130Z Workspaces:
+2026-06-21T15:59:21.5067530Z     /Users/runner/work/rememberme/rememberme/src-tauri
+2026-06-21T15:59:21.5067860Z Cache Paths:
+2026-06-21T15:59:21.5068170Z     /Users/runner/.cargo/bin
+2026-06-21T15:59:21.5068460Z     /Users/runner/.cargo/.crates.toml
+2026-06-21T15:59:21.5068830Z     /Users/runner/.cargo/.crates2.json
+2026-06-21T15:59:21.5069230Z     /Users/runner/.cargo/registry
+2026-06-21T15:59:21.5069560Z     /Users/runner/.cargo/git
+2026-06-21T15:59:21.5070060Z     /Users/runner/work/rememberme/rememberme/src-tauri/target
+2026-06-21T15:59:21.5070430Z Restore Key:
+2026-06-21T15:59:21.5070780Z     v0-rust-publish-tauri-Darwin-arm64-5d48e741
+2026-06-21T15:59:21.5071200Z Cache Key:
+2026-06-21T15:59:21.5071510Z     v0-rust-publish-tauri-Darwin-arm64-5d48e741-d85377c7
+2026-06-21T15:59:21.5071910Z .. Prefix:
+2026-06-21T15:59:21.5072370Z   - v0-rust-publish-tauri-Darwin-arm64
+2026-06-21T15:59:21.5072690Z .. Environment considered:
+2026-06-21T15:59:21.5073080Z   - Rust Versions:
+2026-06-21T15:59:21.5073520Z     - 1.96.0 aarch64-apple-darwin ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+2026-06-21T15:59:21.5074110Z     - 1.96.0 aarch64-apple-darwin ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+2026-06-21T15:59:21.5074570Z   - CARGO_HOME
+2026-06-21T15:59:21.5074790Z   - CARGO_INCREMENTAL
+2026-06-21T15:59:21.5075100Z   - CARGO_TERM_COLOR
+2026-06-21T15:59:21.5075410Z .. Lockfiles considered:
+2026-06-21T15:59:21.5076160Z   - /Users/runner/work/rememberme/rememberme/src-tauri/Cargo.lock
+2026-06-21T15:59:21.5076670Z   - /Users/runner/work/rememberme/rememberme/src-tauri/Cargo.toml
+2026-06-21T15:59:21.5077190Z ##[endgroup]
+2026-06-21T15:59:21.5077330Z 
+2026-06-21T15:59:21.5077920Z (node:20448) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-06-21T15:59:21.5078720Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-06-21T15:59:28.6714940Z ... Cleaning /Users/runner/work/rememberme/rememberme/src-tauri/target ...
+2026-06-21T15:59:28.7989450Z ... Cleaning cargo registry (cache-all-crates: false) ...
+2026-06-21T15:59:31.5824470Z ... Cleaning cargo/bin ...
+2026-06-21T15:59:31.5830550Z ... Cleaning cargo git cache ...
+2026-06-21T15:59:31.5834440Z ... Saving cache ...
+2026-06-21T15:59:31.6225290Z [command]/opt/homebrew/bin/gtar --posix -cf cache.tzst --exclude cache.tzst -P -C /Users/runner/work/rememberme/rememberme --files-from manifest.txt --delay-directory-restore --use-compress-program zstdmt
+2026-06-21T15:59:41.3767490Z Sent 0 of 628634649 (0.0%), 0.0 MBs/sec
+2026-06-21T15:59:42.3763220Z Sent 0 of 628634649 (0.0%), 0.0 MBs/sec
+2026-06-21T15:59:43.3862030Z Sent 67108864 of 628634649 (10.7%), 21.3 MBs/sec
+2026-06-21T15:59:44.3884960Z Sent 201326592 of 628634649 (32.0%), 47.8 MBs/sec
+2026-06-21T15:59:45.3882940Z Sent 536870912 of 628634649 (85.4%), 102.1 MBs/sec
+2026-06-21T15:59:46.3916730Z Sent 628634649 of 628634649 (100.0%), 99.6 MBs/sec
