@@ -10,11 +10,11 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 // Đọc phiên bản từ tauri.conf.json
 const tauriConfPath = path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json');
 const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8'));
-const version = `v${tauriConf.version}`;
+const tag = process.env.RELEASE_TAG || `v${tauriConf.version}`;
 
 // Cấu trúc latest.json
 const latestJson = {
-    version,
+    version: tag,
     notes: "Local test update",
     pub_date: new Date().toISOString(),
     platforms: {}
@@ -54,7 +54,7 @@ if (sigFiles.length === 0) {
 const serveMode = process.argv.includes('--serve');
 const baseUrl = serveMode 
     ? "http://localhost:8080/updater/" 
-    : `https://github.com/Cakho-gung/rememberme/releases/download/${version}/`;
+    : `https://github.com/Cakho-gung/rememberme/releases/download/${tag}/`;
 
 // Mapping file .sig sang platform của Tauri
 // VD: .msi.zip.sig -> windows-x86_64
