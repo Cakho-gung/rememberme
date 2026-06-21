@@ -25,6 +25,8 @@
     "core:window:allow-outer-size",
     "core:window:allow-outer-position",
     "core:window:allow-set-position",
-    "notification:default"
+    "notification:default",
+    "updater:default",
+    "process:default"
   ]
 }
