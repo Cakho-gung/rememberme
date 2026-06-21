@@ -29,12 +29,15 @@ export async function checkForAppUpdates() {
         body: update.body || '',
         updateObj: update
       }));
+      return update;
     } else {
       updateState.update(s => ({ ...s, checking: false, available: false }));
+      return null;
     }
   } catch (error) {
     console.error('Failed to check for updates:', error);
     updateState.update(s => ({ ...s, checking: false, error: String(error) }));
+    return null;
   }
 }
 

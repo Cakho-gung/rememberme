@@ -4,6 +4,7 @@
     LogicalSize,
     LogicalPosition,
   } from "@tauri-apps/api/window";
+  import { getVersion } from "@tauri-apps/api/app";
   import { fade, slide } from "svelte/transition";
   import { flip } from "svelte/animate";
   import { onMount, onDestroy, tick } from "svelte";
@@ -41,9 +42,12 @@
 
   // -- Menu & Editing State --
   let isMenuOpen = $state(false);
+  let appVersion = $state("");
+  let updateStatusMessage = $state("");
   let isEditingTitle = $state(false);
   let titleEditValue = $state("");
   let isSettingsOpen = $state(false);
+  let isTimerActive = $state(false);
   let focusAnimationEnabled = $state(true);
   // Safe to access localStorage here since this is a Tauri app (client-only, no SSR)
   let currentTimerPreset = $state<string>(
@@ -60,6 +64,19 @@
     const appWindow = getCurrentWindow();
     await appWindow.hide();
     isMenuOpen = false;
+  }
+
+  async function handleCheckUpdate() {
+    updateStatusMessage = "Checking...";
+    const update = await checkForAppUpdates();
+    if (update) {
+      updateStatusMessage = "";
+    } else {
+      updateStatusMessage = "Your app is the newest one 🎉";
+      setTimeout(() => {
+        updateStatusMessage = "";
+      }, 3000);
+    }
   }
 
   async function togglePin() {
@@ -1001,6 +1018,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     cleanupOrphanedImages();
 
     // Check for app updates
+    appVersion = await getVersion();
     checkForAppUpdates();
   });
 
@@ -1407,6 +1425,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
         <TimerWidget
           onComplete={handleTimerComplete}
           timerPreset={currentTimerPreset}
+          bind:isActive={isTimerActive}
         />
       </div>
     </div>
@@ -1902,6 +1921,54 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             <div class="empty-trash">Trash bin is empty</div>
           {/each}
         </div>
+      </div>
+    {/if}
+
+    <!-- Bottom Right Version & Update Area -->
+    {#if !isCollapsed && !isTimerActive}
+      <div
+        class="version-update-module"
+        style="position: absolute; bottom: 14px; right: 12px; display: flex; align-items: center; gap: 6px; font-size: 1rem; color: var(--text-muted, #888); opacity: 0.6; transition: opacity 0.2s ease; z-index: 10;"
+      >
+        {#if updateStatusMessage}
+          <span
+            class="version-text"
+            style="pointer-events: none; user-select: none;"
+            >{updateStatusMessage}</span
+          >
+        {:else}
+          <span
+            class="version-text"
+            style="pointer-events: none; user-select: none;">v{appVersion}</span
+          >
+          <!-- svelte-ignore a11y_mouse_events_have_key_events -->
+          <!-- svelte-ignore a11y_consider_explicit_label -->
+          <button
+            class="check-update-btn"
+            onclick={handleCheckUpdate}
+            aria-label="Check for Update"
+            style="background: transparent; border: none; padding: 4px; border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center;"
+            onmouseover={(e) =>
+              (e.currentTarget.style.background = "rgba(128,128,128,0.2)")}
+            onmouseout={(e) =>
+              (e.currentTarget.style.background = "transparent")}
+            title="Check for updates"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 3.8-11.45L2 6"
+              ></path>
+            </svg>
+          </button>
+        {/if}
       </div>
     {/if}
   </div>
