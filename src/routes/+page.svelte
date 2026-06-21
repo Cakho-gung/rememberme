@@ -295,7 +295,7 @@
     // Gọi Tauri API để mang cửa sổ lên trên cùng
     try {
       const appWindow = getCurrentWindow();
-      
+
       // Đảm bảo cửa sổ không bị ẩn hoặc minimize trên Mac trước khi focus
       await appWindow.unminimize();
 
@@ -309,11 +309,11 @@
 
       // Yêu cầu từ user: nhảy ra giữa màn hình
       await appWindow.center();
-      
+
       // Hack 2: Bật tắt alwaysOnTop để ép OS tính toán lại Z-index lên cao nhất
       await appWindow.setAlwaysOnTop(false);
       await appWindow.setAlwaysOnTop(true);
-      
+
       await appWindow.setFocus();
     } catch (e) {
       console.error("Failed to bring window to front:", e);
@@ -1938,8 +1938,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     padding: 0;
     background: transparent;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: 12px;
     position: relative;
+    box-sizing: border-box;
+    border: 1px solid rgba(128, 128, 128, 0.15);
   }
 
   .glass-widget {

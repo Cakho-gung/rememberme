@@ -1,13 +1,14 @@
 <script lang="ts">
-  export let gradientColors: string = '#4285f4, #ea4335, #fbbc05, #34a853, #4285f4';
-  export let animationDuration: string = '2s';
+  export let gradientColors: string =
+    "#4285f4, #ea4335, #fbbc05, #34a853, #4285f4";
+  export let animationDuration: string = "2s";
   /** Thickness of the visible gradient ring in px or css units */
-  export let ringWidth: string = '10px';
+  export let ringWidth: string = "10px";
   /** Border radius of the ring — should match the window/widget corner radius */
-  export let borderRadius: string = '12px';
+  export let borderRadius: string = "12px";
   /** Blur applied to the gradient colors for softness within the ring */
-  export let blur: string = '6px';
-  export let saturation: string = '150%';
+  export let blur: string = "6px";
+  export let saturation: string = "150%";
   export let isFocused: boolean = false;
   export let forceVisible: boolean = false;
 
@@ -71,7 +72,7 @@
 <style>
   /* ── Outer wrapper: position + opacity animation only ── */
   .glow-outer {
-    position: fixed;
+    position: absolute;
     inset: 0;
     z-index: 99;
     pointer-events: none;
@@ -148,12 +149,21 @@
   }
 
   @keyframes spin {
-    from { transform: translate(-50%, -50%) rotate(0deg); }
-    to   { transform: translate(-50%, -50%) rotate(360deg); }
+    from {
+      transform: translate(-50%, -50%) rotate(0deg);
+    }
+    to {
+      transform: translate(-50%, -50%) rotate(360deg);
+    }
   }
 
   @keyframes breathe {
-    0%, 100% { opacity: var(--breathe-hi); }
-    50%      { opacity: var(--breathe-lo); }
+    0%,
+    100% {
+      opacity: var(--breathe-hi);
+    }
+    50% {
+      opacity: var(--breathe-lo);
+    }
   }
 </style>
