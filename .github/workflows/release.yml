@@ -9,6 +9,10 @@ on:
       tag:
         description: 'Tag to release (e.g. v0.1.9)'
         required: true
+      publish:
+        description: 'Publish to GitHub Release?'
+        type: boolean
+        default: true
 
 jobs:
   build:
@@ -83,6 +87,7 @@ jobs:
 
   publish:
     needs: build
+    if: ${{ github.event_name == 'push' || github.event.inputs.publish == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
