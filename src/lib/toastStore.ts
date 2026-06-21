@@ -20,6 +20,11 @@ export function showToast(message: string) {
   const duration = savedDuration ? parseInt(savedDuration) : 3000;
   
   timeoutId = setTimeout(() => {
-    toastState.update(state => ({ ...state, visible: false }));
+    hideToast();
   }, duration);
+}
+
+export function hideToast() {
+  clearTimeout(timeoutId);
+  toastState.update(state => ({ ...state, visible: false }));
 }

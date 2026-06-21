@@ -323,6 +323,11 @@
   async function handleWindowKeyDown(e: KeyboardEvent) {
     dismissTimerAlert();
 
+    if (e.key === "Escape") {
+      isMenuOpen = false;
+      isAccentMenuOpen = false;
+    }
+
     // Support Alt (Windows/Mac) and Cmd (Mac) for shortcuts
     const isMac = navigator.userAgent.includes("Mac");
     const isModifier = e.altKey || (isMac && e.metaKey);
@@ -367,7 +372,7 @@
         !target.closest(".settings-toggle") &&
         !target.closest("#exit-btn") &&
         !target.closest(".accent-menu") &&
-        !target.closest(".dropdown-item")
+        !target.closest(".notes-overlay-container")
       ) {
         isMenuOpen = false;
         isAccentMenuOpen = false;
@@ -1655,11 +1660,6 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           <div
             class="toc-container notes-overlay-container"
             transition:fade={{ duration: 150 }}
-            onclick={(e) => {
-              if (!(e.target as HTMLElement).closest(".dropdown-item")) {
-                isMenuOpen = false;
-              }
-            }}
           >
             <div class="toc-title">Notes</div>
             <div
@@ -1693,6 +1693,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                     onpointermove={(e) => onDragHandlePointerMove(e, note.id)}
                     onpointerup={(e) => onDragHandlePointerUp(e, note.id)}
                     onpointercancel={onDragHandlePointerCancel}
+                    onclick={(e) => e.stopPropagation()}
                   >
                     <svg
                       width="12"

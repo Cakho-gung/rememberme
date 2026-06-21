@@ -201,8 +201,8 @@
     const percentage = newX / maxX;
     totalTimeSet = percentage * MAX_SECONDS;
     
-    // Play ~120 ticks across the full slider range
-    const currentTickTime = Math.floor(percentage * 120);
+    // Play ~60 ticks across the full slider range
+    const currentTickTime = Math.floor(percentage * 60);
     if (currentTickTime !== lastTickTime && currentTickTime > 0) {
       playTick();
       lastTickTime = currentTickTime;
