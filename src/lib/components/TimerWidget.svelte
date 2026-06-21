@@ -29,9 +29,9 @@
     isActive = currentState !== "idle";
   });
 
-  let containerRef: HTMLDivElement;
-  let pillBtnRef: HTMLButtonElement;
-  let progressGradientRef: HTMLDivElement | undefined;
+  let containerRef: HTMLDivElement | undefined = $state();
+  let pillBtnRef: HTMLButtonElement | undefined = $state();
+  let progressGradientRef: HTMLDivElement | undefined = $state();
 
   // Use Svelte reactive state — we fixed the audio clone bottleneck,
   // so Svelte's reactivity can easily handle 60fps here without lag.
