@@ -1,14 +1,17 @@
-name: 'Publish Release'
+name: 'Build and Release'
 
 on:
   push:
     tags:
       - 'v*' # Kích hoạt khi push tag dạng v1.0.0, v0.1.0...
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.9)'
+        required: true
 
 jobs:
-  publish-tauri:
-    permissions:
-      contents: write
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -53,16 +56,66 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and Release
+      - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'RememberMe ${{ github.ref_name }}'
-          releaseBody: 'Xem chi tiết thay đổi trong [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).'
-          releaseDraft: true  # Tạo draft, bạn kiểm tra rồi Publish thủ công
-          prerelease: false
+          # Không cấu hình tagName để tauri-action CHỈ build mà không tạo release
           args: ${{ matrix.args }}
+        id: tauri_build
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.platform }}
+          path: |
+            src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.msi
+            src-tauri/target/**/bundle/**/*.dmg
+            src-tauri/target/**/bundle/**/*.AppImage
+            src-tauri/target/**/bundle/**/*.deb
+            src-tauri/target/**/bundle/**/*.zip
+            src-tauri/target/**/bundle/**/*.sig
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate latest.json
+        run: |
+          npm ci
+          node scripts/generate-latest.js
+
+      - name: Flatten Artifacts directory
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          cp updater/latest.json release-files/
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.event.inputs.tag || github.ref_name }}
+          name: 'RememberMe ${{ github.event.inputs.tag || github.ref_name }}'
+          body: 'Xem chi tiết thay đổi trong [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md).'
+          draft: true
+          artifacts: 'release-files/*'
+          token: ${{ secrets.GITHUB_TOKEN }}
