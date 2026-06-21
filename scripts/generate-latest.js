@@ -12,10 +12,15 @@ const tauriConfPath = path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json');
 const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf-8'));
 const tag = process.env.RELEASE_TAG || `v${tauriConf.version}`;
 
+const serveMode = process.argv.includes('--serve');
+const notes = serveMode 
+    ? "Local test update" 
+    : `Phiên bản mới ${tag} đã sẵn sàng! Vui lòng cập nhật để trải nghiệm các tính năng mới nhất.`;
+
 // Cấu trúc latest.json
 const latestJson = {
     version: tag,
-    notes: "Local test update",
+    notes: notes,
     pub_date: new Date().toISOString(),
     platforms: {}
 };
@@ -51,7 +56,6 @@ if (sigFiles.length === 0) {
     console.warn("⚠️ No .sig files found. Did you run `npm run tauri build` first?");
 }
 
-const serveMode = process.argv.includes('--serve');
 const baseUrl = serveMode 
     ? "http://localhost:8080/updater/" 
     : `https://github.com/Cakho-gung/rememberme/releases/download/${tag}/`;
