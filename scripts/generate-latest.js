@@ -65,12 +65,12 @@ sigFiles.forEach(sigPath => {
     
     // Tự động detect platform từ tên file
     let platform = "unknown";
-    if (fileName.includes('.msi.zip') || fileName.includes('.nsis.zip')) {
+    if (fileName.includes('.exe.sig') || fileName.includes('.msi.zip') || fileName.includes('.nsis.zip')) {
         platform = "windows-x86_64";
-    } else if (fileName.includes('.app.tar.gz')) {
+    } else if (fileName.includes('.app.tar.gz.sig') || fileName.includes('.app.tar.gz')) {
         // macOS support cả x86_64 và aarch64
         platform = "darwin-universal"; 
-    } else if (fileName.includes('.AppImage.tar.gz')) {
+    } else if (fileName.includes('.AppImage.tar.gz') || fileName.includes('.AppImage.sig')) {
         platform = "linux-x86_64";
     }
 

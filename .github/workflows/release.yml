@@ -80,8 +80,8 @@ jobs:
             src-tauri/target/**/bundle/**/*.msi
             src-tauri/target/**/bundle/**/*.dmg
             src-tauri/target/**/bundle/**/*.AppImage
-            src-tauri/target/**/bundle/**/*.deb
             src-tauri/target/**/bundle/**/*.zip
+            src-tauri/target/**/bundle/**/*.tar.gz
             src-tauri/target/**/bundle/**/*.sig
           if-no-files-found: error
 
@@ -105,6 +105,8 @@ jobs:
           path: artifacts
 
       - name: Generate latest.json
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           npm ci
           node scripts/generate-latest.js
