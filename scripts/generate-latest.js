@@ -15,7 +15,7 @@ const tag = process.env.RELEASE_TAG || `v${tauriConf.version}`;
 const serveMode = process.argv.includes('--serve');
 const notes = serveMode 
     ? "Local test update" 
-    : `Phiên bản mới ${tag} đã sẵn sàng! Vui lòng cập nhật để trải nghiệm các tính năng mới nhất.`;
+    : `New version ${tag} is available! Please update to experience the latest features and improvements.`;
 
 // Cấu trúc latest.json
 const latestJson = {
