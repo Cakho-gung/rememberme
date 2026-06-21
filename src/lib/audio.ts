@@ -21,60 +21,103 @@ export function loadSoundPreference() {
   }
 }
 
-// Cache audio elements so they don't have to be re-created every time
+// Cache HTMLAudioElements for longer or one-off sounds
 const audios: Record<string, HTMLAudioElement | null> = {
-  tick: null,
-  alarm: null,
   start: null,
   pause: null,
   stop: null,
   collapse: null,
-  hover: null,
   themeLight: null,
   themeDark: null
 };
 
-function initAudio() {
+// Use Web Audio API for rapid, repeated sound effects to fix macOS WKWebView lag
+let audioCtx: AudioContext | null = null;
+const webAudioBuffers: Record<string, AudioBuffer | null> = {
+  tick: null,
+  hover: null,
+  alarm: null
+};
+
+export function initAudio() {
   if (typeof window !== 'undefined') {
-    if (!audios.tick) { audios.tick = new Audio('/sounds/tick.mp3'); audios.tick.volume = 0.4; }
-    if (!audios.alarm) { audios.alarm = new Audio('/sounds/alarm.mp3'); audios.alarm.volume = 1.0; }
+    // 1. Initialize Web Audio API
+    if (!audioCtx) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        audioCtx = new AudioContextClass();
+        
+        const loadBuffer = async (key: string, path: string) => {
+          try {
+            const res = await fetch(path);
+            const arrayBuffer = await res.arrayBuffer();
+            webAudioBuffers[key] = await audioCtx!.decodeAudioData(arrayBuffer);
+          } catch (e) {
+            console.error(`Failed to load ${key}`, e);
+          }
+        };
+
+        loadBuffer('tick', '/sounds/tick.mp3');
+        loadBuffer('hover', '/sounds/hover.mp3');
+        loadBuffer('alarm', '/sounds/alarm.mp3');
+      }
+    } else if (audioCtx.state === 'suspended') {
+      // Safari requires resuming AudioContext on user interaction
+      audioCtx.resume();
+    }
+
+    // 2. Initialize HTML5 Audio for standard sounds
     if (!audios.start) { audios.start = new Audio('/sounds/start.mp3'); audios.start.volume = 0.8; }
     if (!audios.pause) { audios.pause = new Audio('/sounds/pause.mp3'); audios.pause.volume = 0.6; }
     if (!audios.stop) { audios.stop = new Audio('/sounds/stop.mp3'); audios.stop.volume = 0.6; }
     if (!audios.collapse) { audios.collapse = new Audio('/sounds/collapse.mp3'); audios.collapse.volume = 0.7; }
-    if (!audios.hover) { audios.hover = new Audio('/sounds/hover.mp3'); audios.hover.volume = 0.3; }
     if (!audios.themeLight) { audios.themeLight = new Audio('/sounds/theme_light.mp3'); audios.themeLight.volume = 0.6; }
     if (!audios.themeDark) { audios.themeDark = new Audio('/sounds/theme_dark.mp3'); audios.themeDark.volume = 0.6; }
   }
 }
 
-function playSound(key: string, clone: boolean = false) {
+function playWebAudio(key: string, volume: number = 1.0) {
+  if (!_soundEnabled) return;
+  try {
+    initAudio();
+    if (audioCtx && webAudioBuffers[key]) {
+      const source = audioCtx.createBufferSource();
+      source.buffer = webAudioBuffers[key];
+      
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.value = volume;
+      
+      source.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      source.start(0);
+    }
+  } catch (e) {
+    console.error(`WebAudio ${key} play failed`, e);
+  }
+}
+
+function playSound(key: string) {
   if (!_soundEnabled) return;
   try {
     initAudio();
     const audio = audios[key];
     if (audio) {
-      if (clone) {
-        const clonedNode = audio.cloneNode(true) as HTMLAudioElement;
-        clonedNode.volume = audio.volume;
-        clonedNode.play().catch(e => console.log(`${key} play blocked:`, e));
-      } else {
-        audio.currentTime = 0;
-        audio.play().catch(e => console.log(`${key} play blocked:`, e));
-      }
+      audio.currentTime = 0;
+      audio.play().catch(e => console.log(`${key} play blocked:`, e));
     }
   } catch (e) {
     console.error(`Audio ${key} play failed`, e);
   }
 }
 
-export function playTick() { playSound('tick', false); }
-export function playAlarm() { playSound('alarm'); }
+export function playTick() { playWebAudio('tick', 0.4); }
+export function playHover() { playWebAudio('hover', 0.3); }
+export function playAlarm() { playWebAudio('alarm', 1.0); }
+
 export function playStart() { playSound('start'); }
 export function playPause() { playSound('pause'); }
 export function playStop() { playSound('stop'); }
 export function playCollapse() { playSound('collapse'); }
-export function playHover() { playSound('hover', false); }
 export function playThemeLight() { playSound('themeLight'); }
 export function playThemeDark() { playSound('themeDark'); }
 

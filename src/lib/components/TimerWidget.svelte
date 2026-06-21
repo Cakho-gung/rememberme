@@ -137,7 +137,8 @@
   let totalTimeSet = $state(0);
   
   let requestRef: number | null = null;
-  let lastTime = 0;
+  let intervalRef: ReturnType<typeof setInterval> | null = null;
+  let targetEndTime = 0;
   let lastTickTime = 0;
   let isHovered = $state(false);
   let isStopping = $state(false);
@@ -200,8 +201,8 @@
     const percentage = newX / maxX;
     totalTimeSet = percentage * MAX_SECONDS;
     
-    // Play ~50 ticks across the full slider range
-    const currentTickTime = Math.floor(percentage * 50);
+    // Play ~120 ticks across the full slider range
+    const currentTickTime = Math.floor(percentage * 120);
     if (currentTickTime !== lastTickTime && currentTickTime > 0) {
       playTick();
       lastTickTime = currentTickTime;
@@ -217,10 +218,12 @@
     window.removeEventListener('pointerup', onDragEnd as EventListener);
     
     if (totalTimeSet > 0) {
+      // Play sound immediately to avoid any delay from IPC/async overhead
+      playStart();
+
       // Prompt for notification permission on user interaction (required by macOS)
       requestNotificationPermission();
       
-      playStart();
       currentState = 'running';
       timeRemaining = totalTimeSet;
       startTimer();
@@ -236,15 +239,23 @@
 
   function startTimer() {
     if (requestRef) cancelAnimationFrame(requestRef);
-    lastTime = performance.now();
+    if (intervalRef) clearInterval(intervalRef);
     
-    function tick(now: number) {
+    targetEndTime = Date.now() + timeRemaining * 1000;
+    
+    // Background watchdog (runs every 1 second) to ensure alarm fires even if rAF is paused by App Nap
+    intervalRef = setInterval(() => {
+      if (currentState === 'running' && Date.now() >= targetEndTime) {
+        timeRemaining = 0;
+        checkCompletion();
+      }
+    }, 1000);
+    
+    function tick() {
       if (currentState !== 'running') return; // Pause or stop handling
       
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-      
-      timeRemaining = Math.max(0, timeRemaining - dt);
+      const now = Date.now();
+      timeRemaining = Math.max(0, (targetEndTime - now) / 1000);
       
       // Update dragX based on time remaining to move it left
       const percentage = timeRemaining / MAX_SECONDS;
@@ -255,10 +266,18 @@
       if (timeRemaining > 0) {
         requestRef = requestAnimationFrame(tick);
       } else {
-        onTimerComplete();
+        timeRemaining = 0;
+        checkCompletion();
       }
     }
     requestRef = requestAnimationFrame(tick);
+  }
+
+  function checkCompletion() {
+    if (currentState !== 'running') return;
+    if (requestRef) cancelAnimationFrame(requestRef);
+    if (intervalRef) clearInterval(intervalRef);
+    onTimerComplete();
   }
 
   function onTimerComplete() {
@@ -294,6 +313,8 @@
       playPause();
       currentState = 'paused';
       if (requestRef) cancelAnimationFrame(requestRef);
+      if (intervalRef) clearInterval(intervalRef);
+      timeRemaining = Math.max(0, (targetEndTime - Date.now()) / 1000);
     } else if (currentState === 'paused') {
       playStart();
       currentState = 'running';
@@ -304,6 +325,7 @@
   function stopTimer() {
     playStop();
     if (requestRef) cancelAnimationFrame(requestRef);
+    if (intervalRef) clearInterval(intervalRef);
     isStopping = true;
     applyTransform(0);
     timeRemaining = 0;
@@ -315,6 +337,7 @@
 
   onDestroy(() => {
     if (requestRef) cancelAnimationFrame(requestRef);
+    if (intervalRef) clearInterval(intervalRef);
     if (typeof window !== 'undefined') {
       window.removeEventListener('pointermove', onDragMove as EventListener);
       window.removeEventListener('pointerup', onDragEnd as EventListener);

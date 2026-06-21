@@ -295,18 +295,25 @@
     // Gọi Tauri API để mang cửa sổ lên trên cùng
     try {
       const appWindow = getCurrentWindow();
+      
       // Đảm bảo cửa sổ không bị ẩn hoặc minimize trên Mac trước khi focus
       await appWindow.unminimize();
+
+      // Hack trên macOS: Ẩn và hiện lại cửa sổ để lách luật chống cướp focus (Focus Stealing Prevention)
+      await appWindow.hide();
+      await appWindow.show();
 
       // Kích hoạt toàn bộ ứng dụng lên phía trước (rất quan trọng trên macOS)
       const { show: showApp } = await import("@tauri-apps/api/app");
       await showApp();
 
-      await appWindow.show();
       // Yêu cầu từ user: nhảy ra giữa màn hình
       await appWindow.center();
-      // Mẹo ép OS đưa cửa sổ lên trên cùng
+      
+      // Hack 2: Bật tắt alwaysOnTop để ép OS tính toán lại Z-index lên cao nhất
+      await appWindow.setAlwaysOnTop(false);
       await appWindow.setAlwaysOnTop(true);
+      
       await appWindow.setFocus();
     } catch (e) {
       console.error("Failed to bring window to front:", e);
@@ -1465,16 +1472,19 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           >
             <svg
               class="tool-icon"
+              xmlns="http://www.w3.org/2000/svg"
               width="16"
               height="16"
-              viewBox="0 0 16 16"
-              fill="currentColor"
-              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
             >
-              <path
-                d="M12.167 4.50049H3.83301V13.3335C3.83301 13.5544 3.92107 13.7661 4.07715 13.9224C4.23343 14.0786 4.44598 14.1665 4.66699 14.1665H11.333C11.554 14.1665 11.7666 14.0786 11.9229 13.9224C12.0789 13.7661 12.167 13.5544 12.167 13.3335V4.50049ZM6.16699 11.3335V7.3335C6.16699 7.05735 6.39085 6.8335 6.66699 6.8335C6.94299 6.83367 7.16699 7.05746 7.16699 7.3335V11.3335C7.16699 11.6095 6.94299 11.8333 6.66699 11.8335C6.39085 11.8335 6.16699 11.6096 6.16699 11.3335ZM8.83301 11.3335V7.3335C8.83301 7.05746 9.05701 6.83367 9.33301 6.8335C9.60915 6.8335 9.83301 7.05735 9.83301 7.3335V11.3335C9.83301 11.6096 9.60915 11.8335 9.33301 11.8335C9.05701 11.8333 8.83301 11.6095 8.83301 11.3335ZM10.167 2.6665C10.1669 2.44569 10.079 2.23383 9.92285 2.07764C9.76657 1.92136 9.55402 1.8335 9.33301 1.8335H6.66699C6.44598 1.8335 6.23343 1.92136 6.07715 2.07764C5.92105 2.23382 5.83309 2.44568 5.83301 2.6665V3.50049H10.167V2.6665ZM11.167 3.50049H14C14.2761 3.50049 14.5 3.72435 14.5 4.00049C14.4998 4.27648 14.276 4.50049 14 4.50049H13.167V13.3335C13.167 13.8196 12.9735 14.2856 12.6299 14.6294C12.2861 14.9732 11.8192 15.1665 11.333 15.1665H4.66699C4.18076 15.1665 3.71393 14.9732 3.37012 14.6294C3.0265 14.2856 2.83301 13.8196 2.83301 13.3335V4.50049H2C1.72397 4.50049 1.50018 4.27648 1.5 4.00049C1.5 3.72435 1.72386 3.50049 2 3.50049H4.83301V2.6665C4.83309 2.18047 5.02648 1.71433 5.37012 1.37061C5.71393 1.02679 6.18076 0.833496 6.66699 0.833496H9.33301C9.81924 0.833496 10.2861 1.02679 10.6299 1.37061C10.9735 1.71433 11.1669 2.18047 11.167 2.6665V3.50049Z"
-                fill="currentColor"
-              />
+              <rect width="20" height="5" x="2" y="3" rx="1" />
+              <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+              <path d="M10 12h4" />
             </svg>
           </button>
           <button
@@ -2377,7 +2387,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     left: 62px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 14px;
     width: 240px;
     pointer-events: auto;
   }
