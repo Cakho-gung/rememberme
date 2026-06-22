@@ -264,6 +264,16 @@ button, a, input, textarea {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
+// macOS WKWebView: backdrop-filter causes jank — use solid background instead
+[data-os="macos"] .app-tooltip {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(14, 14, 14, 0.95);
+}
+[data-os="macos"][data-theme="dark"] .app-tooltip {
+  background: rgba(232, 232, 232, 0.97);
+}
+
 // Custom text selection highlight
 ::selection {
   background-color: $color-accent;

@@ -590,6 +590,12 @@
     -webkit-backdrop-filter: blur(12px);
   }
 
+  // macOS WKWebView: solid background, no blur
+  :global([data-os="macos"]) .settings-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
   // ── Header ──
   .settings-header {
     display: flex;

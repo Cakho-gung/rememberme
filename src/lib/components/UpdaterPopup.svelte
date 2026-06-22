@@ -66,6 +66,13 @@
     pointer-events: auto;
   }
 
+  // macOS WKWebView: no blur — use higher opacity to maintain overlay effect
+  :global([data-os="macos"]) .updater-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(0, 0, 0, 0.65);
+  }
+
   .updater-dialog {
     background: var(--bg-focused, #1e1e1e);
     color: var(--color-text, #ffffff);

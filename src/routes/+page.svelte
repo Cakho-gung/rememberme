@@ -2686,12 +2686,11 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     animation: fade-in 0.2s ease-out forwards;
   }
 
-  /* macOS WKWebView: Tăng opacity lên 85% và bật lại blur để menu không bị trong suốt quá mức
-     làm lộ chữ bên dưới, nhưng vẫn giữ được độ mờ ảo của kính (glassmorphism). */
+  /* macOS WKWebView: backdrop-filter causes jank in WKWebView — use solid background. */
   :global([data-os="macos"]) .menu-overlay {
-    background-color: color-mix(in srgb, var(--bg-focused) 85%, transparent);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background-color: color-mix(in srgb, var(--bg-focused) 96%, transparent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .toolbar {
