@@ -1493,7 +1493,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 />
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<main class="app-container">
+<main class="app-container" onscroll={(e) => { const el = e.currentTarget; el.scrollTop = 0; el.scrollLeft = 0; }}>
   <AnimatedGradientBorder
     ringWidth="24px"
     borderRadius="8px"
@@ -1514,6 +1514,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     style="background-color: {isWindowFocused
       ? 'var(--bg-focused)'
       : 'var(--bg-unfocused)'}; transition: background-color 0.3s ease; height: 100%;"
+    onscroll={(e) => { const el = e.currentTarget; el.scrollTop = 0; el.scrollLeft = 0; }}
   >
     <!-- Expanded drag region to cover top padding -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -2256,7 +2257,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     position: relative;
     display: flex;
     align-items: flex-start;
-    overflow: hidden; // Changed from 'clip' — 'clip' can cause scroll escape on macOS WKWebView
+    overflow: hidden;
     box-sizing: border-box;
     animation: fade-in 0.3s ease-out;
 

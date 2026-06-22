@@ -130,8 +130,13 @@
       linear-gradient(#fff 0 0);
     mask-composite: exclude;
 
-    /* Breathing animation */
+    /* Breathing animation — paused by default, runs only when visible */
     animation: breathe 3s ease-in-out infinite;
+    animation-play-state: paused;
+  }
+
+  .glow-outer.show .glow-ring {
+    animation-play-state: running;
   }
 
   /* ── Spinning conic gradient that fills the ring ── */
@@ -146,6 +151,12 @@
     transform-origin: center;
     will-change: transform;
     animation: spin var(--animation-duration) linear infinite;
+    /* Pause when parent is invisible — save GPU cycles for editor rendering */
+    animation-play-state: paused;
+  }
+
+  .glow-outer.show .gradient-spinner {
+    animation-play-state: running;
   }
 
   @keyframes spin {

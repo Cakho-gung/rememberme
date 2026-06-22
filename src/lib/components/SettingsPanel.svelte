@@ -209,7 +209,21 @@
       const items = getFlatNavItems();
       const idx = items.indexOf(document.activeElement as HTMLElement);
       const next = items[e.key === 'ArrowDown' ? idx + 1 : idx - 1];
-      next?.focus();
+      if (next) {
+        // Prevent browser from scrolling the whole panel (which hides the header).
+        // Instead, manually scroll only .settings-body.
+        next.focus({ preventScroll: true });
+        const body = panelEl?.querySelector('.settings-body');
+        if (body) {
+          const bodyRect = body.getBoundingClientRect();
+          const elRect = next.getBoundingClientRect();
+          if (elRect.bottom > bodyRect.bottom) {
+            body.scrollTop += elRect.bottom - bodyRect.bottom + 8;
+          } else if (elRect.top < bodyRect.top) {
+            body.scrollTop -= bodyRect.top - elRect.top + 8;
+          }
+        }
+      }
       return;
     }
     // Enter/Space: handled natively by focused button (toggle section / activate control)
@@ -629,6 +643,8 @@
     padding: 6px 0 12px;
     display: flex;
     flex-direction: column;
+    // Prevent scroll chaining to parent (keeps header fixed)
+    overscroll-behavior: contain;
 
     // Hide scrollbar
     -ms-overflow-style: none;

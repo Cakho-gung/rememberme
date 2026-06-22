@@ -202,6 +202,25 @@
 			],
 			content: content,
 			onTransaction: ({ editor }) => {
+				// ── Performance: skip expensive isActive() checks during caret navigation ──
+				// When selection is empty (just a cursor), bubble menu is hidden,
+				// so toolbar states (bold/italic/etc.) are not visible — no need to compute them.
+				// Only compute heading level (used by page title extraction) on every transaction.
+				const { empty } = editor.state.selection;
+
+				// Always update heading level (lightweight, needed by TOC/title)
+				if (editor.isActive('heading', { level: 1 })) activeStates.headingLevel = 1;
+				else if (editor.isActive('heading', { level: 2 })) activeStates.headingLevel = 2;
+				else if (editor.isActive('heading', { level: 3 })) activeStates.headingLevel = 3;
+				else if (editor.isActive('heading', { level: 4 })) activeStates.headingLevel = 4;
+				else if (editor.isActive('heading', { level: 5 })) activeStates.headingLevel = 5;
+				else if (editor.isActive('heading', { level: 6 })) activeStates.headingLevel = 6;
+				else activeStates.headingLevel = 0;
+
+				// Skip remaining checks when no text is selected (cursor-only navigation)
+				if (empty) return;
+
+				// Full state refresh — only when bubble menu is potentially visible
 				activeStates.table = editor.isActive('table');
 				activeStates.bold = editor.isActive('bold');
 				activeStates.italic = editor.isActive('italic');
@@ -215,14 +234,6 @@
 				else if (editor.isActive({ textAlign: 'right' })) activeStates.textAlign = 'right';
 				else if (editor.isActive({ textAlign: 'justify' })) activeStates.textAlign = 'justify';
 				else activeStates.textAlign = 'left';
-
-				if (editor.isActive('heading', { level: 1 })) activeStates.headingLevel = 1;
-				else if (editor.isActive('heading', { level: 2 })) activeStates.headingLevel = 2;
-				else if (editor.isActive('heading', { level: 3 })) activeStates.headingLevel = 3;
-				else if (editor.isActive('heading', { level: 4 })) activeStates.headingLevel = 4;
-				else if (editor.isActive('heading', { level: 5 })) activeStates.headingLevel = 5;
-				else if (editor.isActive('heading', { level: 6 })) activeStates.headingLevel = 6;
-				else activeStates.headingLevel = 0;
 
 				activeStates.link = editor.isActive('link');
 				activeStates.textStyle = editor.isActive('textStyle', { color: 'var(--color-accent)' });

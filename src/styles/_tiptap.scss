@@ -338,7 +338,8 @@
 			
 			> div {
 				flex: 1 1 auto;
-				transition: all 0.2s ease;
+				/* Only animate properties that change on check/uncheck — avoids layout thrash during caret movement */
+				transition: text-decoration 0.2s ease, opacity 0.2s ease;
 			}
 		}
 
