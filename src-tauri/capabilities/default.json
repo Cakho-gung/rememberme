@@ -27,6 +27,12 @@
     "core:window:allow-set-position",
     "notification:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister-all",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-is-visible"
   ]
 }

@@ -99,19 +99,7 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let ctrl_shift_space = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
-            let _ = app.global_shortcut().on_shortcut(ctrl_shift_space, |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    if let Some(window) = app.get_webview_window("main") {
-                        if window.is_visible().unwrap_or(false) {
-                            let _ = window.hide();
-                        } else {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                }
-            });
+
 
             Ok(())
         })

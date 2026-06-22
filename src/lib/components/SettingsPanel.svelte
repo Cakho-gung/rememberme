@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { isSoundEnabled, setSoundEnabled } from '$lib/audio';
+  import { applyToggleShortcut, getSavedToggleShortcut } from '$lib/globalShortcut';
 
   // ── Props ──
   let {
@@ -39,7 +41,85 @@
     isRecording?: boolean;
   }
 
+  let recordingId = $state<string | null>(null);
+  let recordingKeys = $state<string[]>([]);
+
+  // ── Panel focus + flat keyboard navigation ──
+  let panelEl = $state<HTMLElement>();
+
+  onMount(() => {
+    panelEl?.focus();
+  });
+
+  // Flat ordered list of all navigable elements:
+  // section headers + sub-items of open sections, in DOM order.
+  function getFlatNavItems(): HTMLElement[] {
+    if (!panelEl) return [];
+    const items: HTMLElement[] = [];
+    const sectionStates = [soundOpen, uiScaleOpen, timerOpen, shortcutsOpen];
+    panelEl.querySelectorAll<HTMLElement>('.settings-section').forEach((section, idx) => {
+      const header = section.querySelector<HTMLElement>('.section-header');
+      if (header) items.push(header);
+      if (sectionStates[idx]) {
+        items.push(...Array.from(
+          section.querySelectorAll<HTMLElement>('button:not(.section-header), input')
+        ).filter(el => !(el as HTMLButtonElement).disabled));
+      }
+    });
+    return items;
+  }
+  
+  const isMac = typeof navigator !== 'undefined' && navigator.userAgent.includes('Mac');
+  
+  function parseShortcutStr(str: string) {
+    const parts = str.split('+').map(p => p.trim());
+    const key = parts.pop() || '';
+    return { modifiers: parts, key };
+  }
+
+  const globalToggleParsed = parseShortcutStr(getSavedToggleShortcut());
+
   let shortcuts = $state<Shortcut[]>([
+    {
+      id: 'global-toggle',
+      label: 'Toggle App Window',
+      description: 'Hide or show the app globally',
+      modifiers: globalToggleParsed.modifiers,
+      key: globalToggleParsed.key,
+      group: 'App',
+    },
+    {
+      id: 'new-note',
+      label: 'New Note',
+      description: 'Create a new blank note',
+      modifiers: [isMac ? 'Cmd' : 'Ctrl'],
+      key: 'N',
+      group: 'App',
+    },
+    {
+      id: 'open-notes',
+      label: 'Notes List',
+      description: 'Toggle the notes overlay menu',
+      modifiers: [isMac ? 'Cmd' : 'Ctrl'],
+      key: 'O',
+      group: 'App',
+    },
+    {
+      id: 'open-toc',
+      label: 'Table of Contents',
+      description: 'Toggle the heading outline for current note',
+      modifiers: [isMac ? 'Cmd' : 'Ctrl'],
+      key: 'L',
+      group: 'App',
+    },
+    {
+      id: 'open-settings',
+      label: 'Settings',
+      description: 'Open the settings panel',
+      modifiers: [isMac ? 'Cmd' : 'Ctrl'],
+      key: ',',
+      group: 'App',
+    },
     {
       id: 'collapse',
       label: 'Collapse / Expand',
@@ -82,9 +162,6 @@
     },
   ]);
 
-  let recordingId = $state<string | null>(null);
-  let recordingKeys = $state<string[]>([]);
-
   function startRecording(id: string) {
     recordingId = id;
     recordingKeys = [];
@@ -95,33 +172,48 @@
     recordingKeys = [];
   }
 
-  function onKeyDownRecorder(e: KeyboardEvent) {
-    if (!recordingId) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (e.key === 'Escape') {
-      cancelRecording();
+  async function onKeyDownRecorder(e: KeyboardEvent) {
+    // ── Mode 1: Recording a shortcut ──
+    if (recordingId) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') { cancelRecording(); return; }
+      const modifiers: string[] = [];
+      if (e.ctrlKey) modifiers.push('Ctrl');
+      if (e.altKey) modifiers.push('Alt');
+      if (e.shiftKey) modifiers.push('Shift');
+      if (e.metaKey) modifiers.push('Cmd');
+      const ignoredKeys = ['Control', 'Alt', 'Shift', 'Meta', 'OS'];
+      if (ignoredKeys.includes(e.key)) return;
+      shortcuts = shortcuts.map(s => {
+        if (s.id === recordingId) {
+          const updated = { ...s, modifiers, key: e.key.toUpperCase() };
+          if (s.id === 'global-toggle') {
+            const shortcutStr = formatShortcut(updated);
+            localStorage.setItem('globalToggleShortcut', shortcutStr);
+            applyToggleShortcut(shortcutStr);
+          }
+          return updated;
+        }
+        return s;
+      });
+      recordingId = null;
+      recordingKeys = [];
       return;
     }
 
-    const modifiers: string[] = [];
-    if (e.ctrlKey) modifiers.push('Ctrl');
-    if (e.altKey) modifiers.push('Alt');
-    if (e.shiftKey) modifiers.push('Shift');
-    if (e.metaKey) modifiers.push('Meta');
-
-    const ignoredKeys = ['Control', 'Alt', 'Shift', 'Meta'];
-    if (ignoredKeys.includes(e.key)) return;
-
-    // Commit the shortcut
-    shortcuts = shortcuts.map(s =>
-      s.id === recordingId
-        ? { ...s, modifiers, key: e.key.toUpperCase() }
-        : s
-    );
-    recordingId = null;
-    recordingKeys = [];
+    // ── Flat navigation: ↑/↓ move through all visible items in DOM order ──
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      const items = getFlatNavItems();
+      const idx = items.indexOf(document.activeElement as HTMLElement);
+      const next = items[e.key === 'ArrowDown' ? idx + 1 : idx - 1];
+      next?.focus();
+      return;
+    }
+    // Enter/Space: handled natively by focused button (toggle section / activate control)
+    // Esc: bubbles to window handler → closes settings (single press, always)
   }
 
   function formatShortcut(s: Shortcut) {
@@ -214,6 +306,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
   class="settings-panel"
+  bind:this={panelEl}
   transition:fly={{ y: -8, duration: 200 }}
   onkeydown={onKeyDownRecorder}
   role="dialog"
@@ -567,8 +660,13 @@
     transition: background 0.15s ease;
     border-radius: 0;
 
-    &:hover {
-      background: rgba(128,128,128,0.06);
+    &:hover,
+    &:focus-visible {
+      background: rgba(128,128,128,0.1);
+    }
+
+    &:focus-visible .section-header-left {
+      color: var(--color-accent);
     }
   }
 
@@ -667,6 +765,11 @@
 
     &:active {
       transform: scale(0.96);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
     }
   }
 
@@ -859,5 +962,17 @@
       font-weight: 600;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+      opacity: 1;
+    }
+  }
+
+  .shortcut-key-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    background: color-mix(in srgb, var(--color-accent) 12%, rgba(128,128,128,0.1));
   }
 </style>

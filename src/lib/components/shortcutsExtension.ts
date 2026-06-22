@@ -15,24 +15,8 @@ export const GlobalShortcuts = Extension.create({
 				if (this.editor.commands.liftListItem('taskItem')) return true;
 				return true; // prevent default focus shift
 			},
-			'Alt-a': () => {
-				if (this.editor.isActive('image')) {
-					return this.editor.chain().focus().updateAttributes('image', { float: 'left' }).run();
-				}
-				return this.editor.chain().focus().setTextAlign('left').run();
-			},
-			'Alt-h': () => {
-				if (this.editor.isActive('image')) {
-					return this.editor.chain().focus().updateAttributes('image', { float: 'none' }).run();
-				}
-				return this.editor.chain().focus().setTextAlign('center').run();
-			},
-			'Alt-d': () => {
-				if (this.editor.isActive('image')) {
-					return this.editor.chain().focus().updateAttributes('image', { float: 'right' }).run();
-				}
-				return this.editor.chain().focus().setTextAlign('right').run();
-			},
+			// Alt+A/H/D align shortcuts are handled in +page.svelte handleWindowKeyDown
+			// using e.code so they work on macOS (Option key produces special chars like å, ˙, ∂)
 		};
 	},
 });

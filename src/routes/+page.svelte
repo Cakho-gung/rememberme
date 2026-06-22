@@ -33,9 +33,11 @@
     loadSoundPreference,
   } from "$lib/audio";
   import { showToast } from "$lib/toastStore";
+  import { tooltip } from "$lib/tooltip";
   import { ToastMessages } from "$lib/messages";
   import { checkForAppUpdates } from "$lib/updater";
   import { initOSClass, isMac } from "$lib/osUtils";
+  import { getSavedToggleShortcut, applyToggleShortcut } from "$lib/globalShortcut";
 
   import "highlight.js/styles/tokyo-night-dark.css";
   import "katex/dist/katex.min.css";
@@ -198,6 +200,9 @@
   let isCollapsed = $state(false);
   let isDropdownOpen = $state(false);
   let isTrashOpen = $state(false);
+  let menuFocusedIndex = $state(-1);
+  let tocFocusedIndex = $state(-1);
+  let trashFocusedIndex = $state(-1);
 
   function openTrash() {
     isTrashOpen = true;
@@ -342,20 +347,185 @@
     }
   }
 
+  function reopenLastArchivedNote() {
+    const archivedNotes = mockNotes.filter((n) => n.archived && n.archivedAt);
+    if (archivedNotes.length === 0) {
+      showToast(ToastMessages.NO_CLOSED_NOTES);
+      return;
+    }
+    const lastArchived = archivedNotes.reduce((prev, current) => {
+      return (prev.archivedAt || 0) > (current.archivedAt || 0) ? prev : current;
+    });
+    restoreNote(lastArchived.id);
+    showToast(ToastMessages.REOPENED(lastArchived.title));
+  }
+
   async function handleWindowKeyDown(e: KeyboardEvent) {
     dismissTimerAlert();
 
     if (e.key === "Escape") {
+      if (isSettingsOpen) {
+        closeSettings();
+        return;
+      }
+      if (isDropdownOpen) {
+        isDropdownOpen = false;
+        return;
+      }
       isMenuOpen = false;
       isAccentMenuOpen = false;
     }
 
-    // Support Alt (Windows/Mac) and Cmd (Mac) for shortcuts
-    const isMac = navigator.userAgent.includes("Mac");
-    const isModifier = e.altKey || (isMac && e.metaKey);
+    // Arrow key + Enter navigation inside TOC
+    if (isDropdownOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (headings.length > 0)
+          tocFocusedIndex = tocFocusedIndex >= headings.length - 1 ? 0 : tocFocusedIndex + 1;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (headings.length > 0)
+          tocFocusedIndex = tocFocusedIndex <= 0 ? headings.length - 1 : tocFocusedIndex - 1;
+        return;
+      }
+      if (e.key === "Enter" && tocFocusedIndex >= 0) {
+        e.preventDefault();
+        const focused = headings[tocFocusedIndex];
+        if (focused) {
+          scrollToHeading(focused);
+          isDropdownOpen = false;
+        }
+        return;
+      }
+    }
 
-    if (isModifier) {
-      // Use e.code instead of e.key because pressing Option/Alt on Mac types special characters (e.g., Option+F -> ƒ)
+    // Arrow key + Enter navigation inside overlay menu
+    if (isMenuOpen && !isAccentMenuOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        menuFocusedIndex = menuFocusedIndex >= dropdownNotes.length - 1 ? 0 : menuFocusedIndex + 1;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        menuFocusedIndex = menuFocusedIndex <= 0 ? dropdownNotes.length - 1 : menuFocusedIndex - 1;
+        return;
+      }
+      if (e.key === "Enter" && menuFocusedIndex >= 0) {
+        e.preventDefault();
+        const focused = dropdownNotes[menuFocusedIndex];
+        if (focused) {
+          selectNote(focused.id);
+          isMenuOpen = false;
+        }
+        return;
+      }
+    }
+
+    // Arrow key + Enter navigation inside trash overlay
+    if (isTrashOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (trashNoteList.length > 0)
+          trashFocusedIndex = trashFocusedIndex >= trashNoteList.length - 1 ? 0 : trashFocusedIndex + 1;
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (trashNoteList.length > 0)
+          trashFocusedIndex = trashFocusedIndex <= 0 ? trashNoteList.length - 1 : trashFocusedIndex - 1;
+        return;
+      }
+      if (e.key === "Enter" && trashFocusedIndex >= 0) {
+        e.preventDefault();
+        const note = trashNoteList[trashFocusedIndex];
+        if (note) restoreNote(note.id);
+        return;
+      }
+    }
+
+    const isMac = navigator.userAgent.includes("Mac");
+
+    // 1. Primary modifier (Ctrl on Win/Linux, Cmd on Mac)
+    const isPrimaryModifier = (isMac && e.metaKey) || (!isMac && e.ctrlKey);
+
+    if (isPrimaryModifier) {
+      if (e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        createNewNote();
+        return;
+      }
+
+      if (e.key === ",") {
+        e.preventDefault();
+        handleSettings();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        isMenuOpen = !isMenuOpen;
+        if (isMenuOpen) {
+          const activeIdx = dropdownNotes.findIndex(n => n.id === activeNoteId);
+          menuFocusedIndex = activeIdx >= 0 ? activeIdx : 0;
+        }
+        return;
+      }
+
+      if (e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        if (!isCollapsed) {
+          isDropdownOpen = !isDropdownOpen;
+          if (isDropdownOpen) {
+            await tick();
+            tocFocusedIndex = headings.length > 0 ? 0 : -1;
+          }
+        }
+        return;
+      }
+
+      if (e.key.toLowerCase() === "r" && !e.shiftKey) {
+        e.preventDefault();
+        editTitle();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "r" && e.shiftKey) {
+        // Ctrl/Cmd+Shift+R → reload (replaces old Ctrl+R browser reload)
+        e.preventDefault();
+        window.location.reload();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        toggleTheme();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "q") {
+        e.preventDefault();
+        closeApp();
+        return;
+      }
+
+      if (e.shiftKey && (e.key === "Delete" || e.key === "Backspace")) {
+        e.preventDefault();
+        const note = mockNotes.find((n) => n.id === activeNoteId);
+        if (note) {
+          archiveNote();
+          showToast(`Archived: "${note.title || 'Untitled Note'}"`);
+        }
+        return;
+      }
+
+    }
+
+    // 2. Alt/Option modifier (Alt on Win, Option on Mac — never metaKey to avoid Cmd+F/T/E conflicts)
+    if (e.altKey) {
+      // Always use e.code — Option key on Mac produces special chars (e.g. Option+F → ƒ, Option+A → å)
       const code = e.code;
 
       if (code === "KeyF") {
@@ -364,10 +534,40 @@
         return;
       }
 
-      // Support both E and T for pinning as per user request
       if (code === "KeyE" || code === "KeyT") {
         e.preventDefault();
         await togglePin();
+        return;
+      }
+
+      // Editor align shortcuts — handled here (not in Tiptap extension) so e.code works on Mac
+      if (code === "KeyA") {
+        e.preventDefault();
+        if (editorInstance?.isActive('image')) {
+          editorInstance?.chain().focus().updateAttributes('image', { float: 'left' }).run();
+        } else {
+          editorInstance?.chain().focus().setTextAlign('left').run();
+        }
+        return;
+      }
+
+      if (code === "KeyH") {
+        e.preventDefault();
+        if (editorInstance?.isActive('image')) {
+          editorInstance?.chain().focus().updateAttributes('image', { float: 'none' }).run();
+        } else {
+          editorInstance?.chain().focus().setTextAlign('center').run();
+        }
+        return;
+      }
+
+      if (code === "KeyD") {
+        e.preventDefault();
+        if (editorInstance?.isActive('image')) {
+          editorInstance?.chain().focus().updateAttributes('image', { float: 'right' }).run();
+        } else {
+          editorInstance?.chain().focus().setTextAlign('right').run();
+        }
         return;
       }
     }
@@ -529,6 +729,21 @@
   // -- Theme State --
   let isDarkMode = $state(false);
 
+  /** Returns "Label  Win shortcut" or "Label  Mac shortcut" depending on platform. */
+  function tip(label: string, win: string, mac: string): string {
+    return `${label}  ${isMac() ? mac : win}`;
+  }
+
+  function applyAccentColor(color: (typeof accentColors)[0], dark = isDarkMode) {
+    const hex   = (dark && (color as any).darkHex)   ? (color as any).darkHex   : color.hex;
+    const hover = (dark && (color as any).darkHover) ? (color as any).darkHover : color.hover;
+    const text  = (dark && (color as any).darkText)  ? (color as any).darkText  : color.text;
+    document.documentElement.style.setProperty("--color-accent", hex);
+    document.documentElement.style.setProperty("--color-accent-hover", hover);
+    document.documentElement.style.setProperty("--color-accent-text", text);
+    document.documentElement.style.setProperty("--table-cell-mix", color.cellMix ?? "7%");
+  }
+
   function toggleTheme() {
     isDarkMode = !isDarkMode;
     if (isDarkMode) {
@@ -540,16 +755,20 @@
       document.documentElement.removeAttribute("data-theme");
       localStorage.setItem("theme", "light");
     }
+    applyAccentColor(currentAccent, isDarkMode);
   }
 
   // -- Accent Color State --
   const accentColors = [
     {
-      name: "Gray",
-      hex: "#6B7280",
-      hover: "#4B5563",
+      name: "Black",
+      hex: "#000000",
+      hover: "#333333",
       text: "#ffffff",
       cellMix: "8%",
+      darkHex: "#ffffff",
+      darkHover: "#cccccc",
+      darkText: "#000000",
     },
     {
       name: "Green",
@@ -618,19 +837,7 @@
   function selectAccentColor(e: Event, color: (typeof accentColors)[0]) {
     e.stopPropagation();
     currentAccent = color;
-    document.documentElement.style.setProperty("--color-accent", color.hex);
-    document.documentElement.style.setProperty(
-      "--color-accent-hover",
-      color.hover,
-    );
-    document.documentElement.style.setProperty(
-      "--color-accent-text",
-      color.text,
-    );
-    document.documentElement.style.setProperty(
-      "--table-cell-mix",
-      color.cellMix ?? "7%",
-    );
+    applyAccentColor(color);
     localStorage.setItem("accentColor", JSON.stringify(color));
     isAccentMenuOpen = false;
     isMenuOpen = false;
@@ -837,9 +1044,14 @@
       .map((g) => ({ label: g, notes: groups.get(g)! }));
   });
 
+  let trashNoteList = $derived(groupedTrashNotes.flatMap((g) => g.notes));
+
   onMount(async () => {
     // Detect OS and add data-os attribute to <html> for platform-specific CSS
     initOSClass();
+
+    // Initialize global shortcut
+    applyToggleShortcut(getSavedToggleShortcut());
 
     /*
      * On macOS, standard DOM window.blur/focus events are unreliable inside WKWebView.
@@ -880,45 +1092,15 @@
     if (savedAccent) {
       try {
         const savedColor = JSON.parse(savedAccent);
-        // Look up by hex in the current array to always get the latest cellMix etc.
+        // Look up by name OR hex to handle saved colors across version changes
         const matchedColor = accentColors.find(
-          (c) => c.hex === savedColor.hex,
+          (c) => c.name === savedColor.name || c.hex === savedColor.hex,
         ) ?? { ...savedColor, cellMix: savedColor.cellMix ?? "7%" };
         currentAccent = matchedColor;
-        document.documentElement.style.setProperty(
-          "--color-accent",
-          matchedColor.hex,
-        );
-        document.documentElement.style.setProperty(
-          "--color-accent-hover",
-          matchedColor.hover,
-        );
-        document.documentElement.style.setProperty(
-          "--color-accent-text",
-          matchedColor.text || "#ffffff",
-        );
-        document.documentElement.style.setProperty(
-          "--table-cell-mix",
-          matchedColor.cellMix ?? "7%",
-        );
+        applyAccentColor(matchedColor);
       } catch (e) {}
     } else {
-      document.documentElement.style.setProperty(
-        "--color-accent",
-        currentAccent.hex,
-      );
-      document.documentElement.style.setProperty(
-        "--color-accent-hover",
-        currentAccent.hover,
-      );
-      document.documentElement.style.setProperty(
-        "--color-accent-text",
-        currentAccent.text,
-      );
-      document.documentElement.style.setProperty(
-        "--table-cell-mix",
-        currentAccent.cellMix,
-      );
+      applyAccentColor(currentAccent);
     }
 
     // Load sound preference from localStorage
@@ -1081,6 +1263,37 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     }
   });
 
+  $effect(() => {
+    if (!isMenuOpen) {
+      menuFocusedIndex = -1;
+    } else if (menuFocusedIndex >= 0) {
+      tick().then(() => {
+        document.querySelector('.dropdown-item.keyboard-focused')?.scrollIntoView({ block: 'nearest' });
+      });
+    }
+  });
+
+  $effect(() => {
+    if (!isDropdownOpen) {
+      tocFocusedIndex = -1;
+    } else if (tocFocusedIndex >= 0) {
+      tick().then(() => {
+        const items = document.querySelectorAll('.toc-dropdown .toc-item');
+        (items[tocFocusedIndex] as HTMLElement)?.scrollIntoView({ block: 'nearest' });
+      });
+    }
+  });
+
+  $effect(() => {
+    if (!isTrashOpen) {
+      trashFocusedIndex = -1;
+    } else if (trashFocusedIndex >= 0) {
+      tick().then(() => {
+        document.querySelector('.trash-item.keyboard-focused')?.scrollIntoView({ block: 'nearest' });
+      });
+    }
+  });
+
   function scrollToHeading(heading: { id: string; element: HTMLElement }) {
     // lưu index (heading.id là string của số index)
     const headingIndex = parseInt(heading.id);
@@ -1236,13 +1449,17 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       // 1. Prepare to expand: remove max constraints first
       await appWindow.setMaxSize(new LogicalSize(9999, 9999));
 
-      const widthToRestore = previousSize.width;
+      // Read live width — user may have resized while collapsed, so don't use stale previousSize.width
+      const currentSize = await appWindow.innerSize();
+      const scale = await appWindow.scaleFactor();
+      const currentWidth = currentSize.width / scale;
+
       const targetHeight = Math.max(minExpandH, previousSize.height);
 
       isCollapsed = false;
 
       // 2. Expand OS window instantly
-      await appWindow.setSize(new LogicalSize(widthToRestore, targetHeight));
+      await appWindow.setSize(new LogicalSize(currentWidth, targetHeight));
       await appWindow.setMinSize(new LogicalSize(minW, minExpandH));
     }
   }
@@ -1348,6 +1565,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             class="title-icon-btn"
             onclick={toggleCollapse}
             aria-label="Toggle Collapse"
+            use:tooltip={{ text: isCollapsed ? tip('Expand', 'Alt+F', '⌥F') : tip('Collapse', 'Alt+F', '⌥F'), position: 'bottom' }}
           >
             <svg
               class="title-icon"
@@ -1373,10 +1591,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             transition:slide={{ duration: 200 }}
             style="padding: 0 12px 16px 12px; gap: 4px;"
           >
-            {#each headings as heading}
+            {#each headings as heading, headingIdx}
               <button
                 class="toc-item level-{heading.level}"
-                class:drag-hover={hoveredHeadingId === heading.id}
+                class:drag-hover={hoveredHeadingId === heading.id || tocFocusedIndex === headingIdx}
                 data-id={heading.id}
                 onclick={() => {
                   scrollToHeading(heading);
@@ -1456,6 +1674,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             data-action="create"
             onclick={createNewNote}
             aria-label="Create Note"
+            use:tooltip={{ text: tip('Create Note', 'Ctrl+N', '⌘N') }}
           >
             <svg
               class="tool-icon"
@@ -1477,6 +1696,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             data-action="edit"
             onclick={editTitle}
             aria-label="Edit Title"
+            use:tooltip={{ text: tip('Rename Note', 'Ctrl+R', '⌘R') }}
           >
             <svg
               class="tool-icon"
@@ -1498,6 +1718,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             data-action="archive"
             onclick={archiveNote}
             aria-label="Archive Note"
+            use:tooltip={{ text: tip('Archive Note', 'Ctrl+Shift+Del', '⌘⇧⌫') }}
           >
             <svg
               class="tool-icon"
@@ -1522,6 +1743,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             data-action="pin"
             onclick={togglePin}
             aria-label="Pin"
+            use:tooltip={{ text: isPinned ? tip('Unpin window', 'Alt+E', '⌥E') : tip('Pin to top', 'Alt+E', '⌥E') }}
           >
             {#if isPinned}
               <svg
@@ -1560,6 +1782,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             data-action="exit"
             onclick={closeApp}
             aria-label="Exit App"
+            use:tooltip={{ text: tip('Exit', 'Ctrl+Q', '⌘Q') }}
           >
             <svg
               class="tool-icon"
@@ -1585,6 +1808,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           onclick={toggleTheme}
           aria-label="Toggle Theme"
           style="position: absolute; top: 64px; left: 12px; pointer-events: auto;"
+          use:tooltip={{ text: isDarkMode ? tip('Light mode', 'Ctrl+I', '⌘I') : tip('Dark mode', 'Ctrl+I', '⌘I'), position: 'right' }}
         >
           {#if !isDarkMode}
             <svg
@@ -1636,6 +1860,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           }}
           aria-label="Change Accent Color"
           style="position: absolute; top: 108px; left: 12px; pointer-events: auto;"
+          use:tooltip={{ text: 'Accent Color', position: 'right' }}
         >
           <svg
             width="20"
@@ -1661,6 +1886,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           onclick={handleSettings}
           aria-label="Settings"
           style="position: absolute; top: 152px; left: 12px; pointer-events: auto;"
+          use:tooltip={{ text: tip('Settings', 'Ctrl+,', '⌘,'), position: 'right' }}
         >
           <svg
             class="tool-icon"
@@ -1690,13 +1916,14 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
               class="toc-list dropdown-list"
               style="max-height: none; padding: 0;"
             >
-              {#each dropdownNotes as note (note.id)}
+              {#each dropdownNotes as note, noteIdx (note.id)}
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <div
                   class="dropdown-item"
                   class:dragging={draggingNoteId === note.id}
                   class:drag-hover={hoveredDotNoteId === note.id}
+                  class:keyboard-focused={menuFocusedIndex === noteIdx}
                   class:drop-target-top={hoveredNoteId === note.id &&
                     dropPosition === "top"}
                   class:drop-target-bottom={hoveredNoteId === note.id &&
@@ -1743,6 +1970,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                     class="archive-item-btn"
                     onclick={(e) => archiveNoteById(e, note.id)}
                     aria-label="Archive Note"
+                    use:tooltip={{ position: 'left' }}
                   >
                     <svg
                       class="item-icon"
@@ -1878,7 +2106,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             <div class="trash-time-group">
               <div class="trash-time-label">{group.label}</div>
               {#each group.notes as note}
-                <div class="trash-item">
+                <div class="trash-item" class:keyboard-focused={trashNoteList.indexOf(note) === trashFocusedIndex}>
                   <span class="trash-bullet">·</span>
                   <span class="trash-item-title">{note.title}</span>
                   <div class="trash-item-actions">
@@ -1886,6 +2114,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                       class="trash-icon-btn restore-icon-btn"
                       onclick={() => restoreNote(note.id)}
                       aria-label="Restore"
+                      use:tooltip={{ text: 'Restore note', position: 'top' }}
                     >
                       <!-- Undo/Restore icon -->
                       <svg
@@ -1904,6 +2133,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                       class="trash-icon-btn delete-icon-btn"
                       onclick={() => permanentlyDeleteNote(note.id)}
                       aria-label="Delete permanently"
+                      use:tooltip={{ text: 'Delete permanently', position: 'top' }}
                     >
                       <!-- Trash/delete icon -->
                       <svg
@@ -1951,13 +2181,13 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
           <button
             class="check-update-btn"
             onclick={handleCheckUpdate}
-            aria-label="Check for Update"
+            aria-label="Check for updates"
             style="background: transparent; border: none; padding: 4px; border-radius: 4px; color: inherit; cursor: pointer; display: flex; align-items: center;"
             onmouseover={(e) =>
               (e.currentTarget.style.background = "rgba(128,128,128,0.2)")}
             onmouseout={(e) =>
               (e.currentTarget.style.background = "transparent")}
-            title="Check for updates"
+            use:tooltip={{ text: 'Check for updates', position: 'top' }}
           >
             <svg
               width="16"
@@ -2280,6 +2510,16 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     &:hover {
       opacity: 1;
       background: rgba(128, 128, 128, 0.04);
+    }
+
+    &.keyboard-focused {
+      opacity: 1;
+      background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+      outline: none;
+
+      .item-text {
+        color: var(--color-accent);
+      }
     }
 
     &.dragging {
@@ -2840,7 +3080,8 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       padding-left 0.18s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     min-width: 0;
 
-    &:hover {
+    &:hover,
+    &.keyboard-focused {
       opacity: 1;
       background: rgba(128, 128, 128, 0.08);
       border-left: 2px solid $color-accent;
