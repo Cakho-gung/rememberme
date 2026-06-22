@@ -71,7 +71,7 @@ sigFiles.forEach(sigPath => {
     let platform = "unknown";
     if (fileName.includes('.exe.sig') || fileName.includes('.msi.zip') || fileName.includes('.nsis.zip')) {
         platform = "windows-x86_64";
-    } else if (fileName.includes('.app.tar.gz.sig') || fileName.includes('.app.tar.gz')) {
+    } else if (fileName.endsWith('.tar.gz.sig') || fileName.endsWith('.tar.gz')) {
         // macOS support cả x86_64 và aarch64
         platform = "darwin-universal"; 
     } else if (fileName.includes('.AppImage.tar.gz') || fileName.includes('.AppImage.sig')) {
