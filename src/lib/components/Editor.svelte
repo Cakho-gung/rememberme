@@ -39,6 +39,7 @@
 	import { EmojiExtension } from './emojiExtension';
 	import { CustomImage } from './CustomImage';
 	import { GlobalShortcuts } from './shortcutsExtension';
+	import { ImageCopyExtension } from './ImageCopyExtension';
 
 	interface Props {
 		noteId: number;
@@ -93,6 +94,9 @@
 				},
 				scrollThreshold: { top: 0, bottom: 80, left: 0, right: 0 },
 				scrollMargin: { top: 0, bottom: 80, left: 0, right: 0 },
+				clipboardTextSerializer: (slice) => {
+					return slice.content.textBetween(0, slice.content.size, '\n');
+				},
 			},
 			extensions: [
 				// Cấu hình StarterKit: Tắt codeBlock mặc định vì đã dùng lowlight
@@ -128,6 +132,7 @@
 					allowBase64: false,
 				}),
 				ImagePasteExtension,
+				ImageCopyExtension,
 				TaskList,
 				TaskItem.configure({
 					nested: true, // Hỗ trợ Enter ở cuối sẽ tạo task mới

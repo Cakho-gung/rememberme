@@ -519,6 +519,8 @@
 			margin: 0 !important; /* Wrapper takes care of margin */
 			cursor: pointer;
 			transition: opacity 0.15s ease;
+			-webkit-user-select: none;
+			user-select: none;
 		}
 
 		.image-resizer-handle {
