@@ -60,6 +60,9 @@
     node.focus();
   }
 
+  // Cached once at init — avoids UA string parse on every keydown
+  const _isMac = isMac();
+
   let isPinned = $state(true);
 
   async function closeApp() {
@@ -361,6 +364,17 @@
   }
 
   async function handleWindowKeyDown(e: KeyboardEvent) {
+    // Fast path: plain arrow key, no overlay open, no modifier held
+    // → skip all overhead and let ProseMirror handle cursor movement directly.
+    // This is critical on macOS WKWebView where JS handler overhead compounds key-repeat lag.
+    if (
+      !isTimerAlerting && !isDropdownOpen && !isMenuOpen && !isTrashOpen && !isSettingsOpen &&
+      !e.metaKey && !e.ctrlKey && !e.altKey &&
+      (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+    ) {
+      return;
+    }
+
     dismissTimerAlert();
 
     if (e.key === "Escape") {
@@ -446,10 +460,8 @@
       }
     }
 
-    const isMac = navigator.userAgent.includes("Mac");
-
     // 1. Primary modifier (Ctrl on Win/Linux, Cmd on Mac)
-    const isPrimaryModifier = (isMac && e.metaKey) || (!isMac && e.ctrlKey);
+    const isPrimaryModifier = (_isMac && e.metaKey) || (!_isMac && e.ctrlKey);
 
     if (isPrimaryModifier) {
       if (e.key.toLowerCase() === "n") {

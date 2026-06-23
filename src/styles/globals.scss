@@ -176,6 +176,23 @@
     opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+/* macOS WKWebView: ProseMirror cursor/selection DOM changes fire the global transition
+   on every keypress via Core Animation — this is the primary source of arrow-key lag.
+   Kill all transitions inside the editor entirely; theme-change smoothness is not needed there. */
+[data-os="macos"] .ProseMirror,
+[data-os="macos"] .ProseMirror *,
+[data-os="macos"] .ProseMirror *::before,
+[data-os="macos"] .ProseMirror *::after {
+  transition: none;
+}
+
+/* Promote the editor to its own compositor layer so cursor repaints don't
+   invalidate surrounding UI elements. */
+[data-os="macos"] .ProseMirror {
+  will-change: contents;
+  contain: layout style;
+}
+
 
 html, body {
   margin: 0;
