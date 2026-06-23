@@ -1142,12 +1142,24 @@
     const notes = await loadNotes();
     if (notes.length > 0) {
       mockNotes = notes;
-      // Select the first non-archived note
-      const first = mockNotes.find((n) => !n.archived);
-      if (first) {
-        activeNoteId = first.id;
-        if (first.content === null) {
-          first.content = await loadNoteContent(first.id);
+      // Try to load the last active note id from localStorage
+      const savedNoteIdStr = localStorage.getItem("lastActiveNoteId");
+      let targetNote = null;
+      
+      if (savedNoteIdStr) {
+        const parsedId = parseInt(savedNoteIdStr);
+        targetNote = mockNotes.find((n) => n.id === parsedId && !n.archived);
+      }
+      
+      // Fallback to the first non-archived note
+      if (!targetNote) {
+        targetNote = mockNotes.find((n) => !n.archived);
+      }
+      
+      if (targetNote) {
+        activeNoteId = targetNote.id;
+        if (targetNote.content === null) {
+          targetNote.content = await loadNoteContent(targetNote.id);
         }
       }
     } else {
@@ -1303,6 +1315,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       tick().then(() => {
         document.querySelector('.trash-item.keyboard-focused')?.scrollIntoView({ block: 'nearest' });
       });
+    }
+  });
+
+  $effect(() => {
+    if (activeNoteId !== 0) {
+      localStorage.setItem("lastActiveNoteId", activeNoteId.toString());
     }
   });
 
