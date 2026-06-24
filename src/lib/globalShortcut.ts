@@ -43,3 +43,50 @@ export async function applyToggleShortcut(shortcutString: string) {
     showToast(`Shortcut Error: ${error}`);
   }
 }
+
+export function getLocalShortcut(id: string, defaultShortcut: string): string {
+  if (typeof localStorage === 'undefined') return defaultShortcut;
+  return localStorage.getItem(`shortcut_${id}`) || defaultShortcut;
+}
+
+export function matchShortcut(e: KeyboardEvent, shortcutStr: string): boolean {
+  if (!shortcutStr) return false;
+  
+  const parts = shortcutStr.split('+').map(p => p.trim().toLowerCase());
+  const keyStr = parts[parts.length - 1];
+  
+  // Modifiers expected by shortcut
+  const needsCtrl = parts.includes('ctrl');
+  const needsAlt = parts.includes('alt');
+  const needsShift = parts.includes('shift');
+  const needsCmd = parts.includes('cmd') || parts.includes('meta');
+
+  // Check modifiers
+  // e.metaKey is Cmd on Mac, e.ctrlKey is Ctrl
+  if (e.ctrlKey !== needsCtrl) return false;
+  if (e.altKey !== needsAlt) return false;
+  if (e.shiftKey !== needsShift) return false;
+  if (e.metaKey !== needsCmd) return false;
+
+  // Check key (handling e.key which could be e.g. "Escape", "Enter", "i", ",", "ArrowDown")
+  // Or handle e.code e.g. "KeyI", "Comma"
+  const eKeyLower = e.key.toLowerCase();
+  let eCodeLower = e.code.toLowerCase();
+  
+  // e.code has "keyi", "digit1", "comma"
+  if (eCodeLower.startsWith('key')) {
+    eCodeLower = eCodeLower.replace('key', '');
+  } else if (eCodeLower.startsWith('digit')) {
+    eCodeLower = eCodeLower.replace('digit', '');
+  }
+  
+  // if keyStr is a single character, match against eKeyLower or eCodeLower
+  if (keyStr === eKeyLower || keyStr === eCodeLower) {
+    return true;
+  }
+  
+  // Handle special cases
+  if (keyStr === ',' && (eKeyLower === ',' || eCodeLower === 'comma')) return true;
+  
+  return false;
+}

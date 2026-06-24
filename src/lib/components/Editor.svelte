@@ -189,13 +189,15 @@
 							return false;
 						}
 						
-						// Show bubble menu inside table even if selection is empty
-						if (editor.isActive('table')) {
+						const { doc, selection } = state;
+						const { empty } = selection;
+						const isCellSelection = '$anchorCell' in selection;
+
+						// Show bubble menu inside table if selection is empty or multiple cells are selected
+						if (editor.isActive('table') && (empty || isCellSelection)) {
 							return true;
 						}
 						
-						const { doc, selection } = state;
-						const { empty } = selection;
 						if (empty || !view.hasFocus()) {
 							showHeadingMenu = false;
 							showMoreMenu = false;
@@ -222,11 +224,13 @@
 				else if (editor.isActive('heading', { level: 6 })) activeStates.headingLevel = 6;
 				else activeStates.headingLevel = 0;
 
+				const isCellSelection = '$anchorCell' in editor.state.selection;
+				activeStates.table = editor.isActive('table') && (empty || isCellSelection);
+
 				// Skip remaining checks when no text is selected (cursor-only navigation)
 				if (empty) return;
 
 				// Full state refresh — only when bubble menu is potentially visible
-				activeStates.table = editor.isActive('table');
 				activeStates.bold = editor.isActive('bold');
 				activeStates.italic = editor.isActive('italic');
 				activeStates.underline = editor.isActive('underline');

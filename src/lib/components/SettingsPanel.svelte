@@ -3,7 +3,7 @@
   import { fade, fly } from 'svelte/transition';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { isSoundEnabled, setSoundEnabled } from '$lib/audio';
-  import { applyToggleShortcut, getSavedToggleShortcut } from '$lib/globalShortcut';
+  import { applyToggleShortcut, getSavedToggleShortcut, getLocalShortcut } from '$lib/globalShortcut';
 
   // ── Props ──
   let {
@@ -86,6 +86,14 @@
       description: 'Hide or show the app globally',
       modifiers: globalToggleParsed.modifiers,
       key: globalToggleParsed.key,
+      group: 'App',
+    },
+    {
+      id: 'theme-toggle',
+      label: 'Toggle Theme',
+      description: 'Switch between light and dark mode',
+      modifiers: parseShortcutStr(getLocalShortcut('theme-toggle', 'Alt + I')).modifiers,
+      key: parseShortcutStr(getLocalShortcut('theme-toggle', 'Alt + I')).key,
       group: 'App',
     },
     {
@@ -188,10 +196,12 @@
       shortcuts = shortcuts.map(s => {
         if (s.id === recordingId) {
           const updated = { ...s, modifiers, key: e.key.toUpperCase() };
+          const shortcutStr = formatShortcut(updated);
           if (s.id === 'global-toggle') {
-            const shortcutStr = formatShortcut(updated);
             localStorage.setItem('globalToggleShortcut', shortcutStr);
             applyToggleShortcut(shortcutStr);
+          } else {
+            localStorage.setItem(`shortcut_${s.id}`, shortcutStr);
           }
           return updated;
         }
@@ -683,11 +693,11 @@
     border-radius: 0;
 
     &:hover,
-    &:focus-visible {
+    &:focus {
       background: rgba(128,128,128,0.1);
     }
 
-    &:focus-visible .section-header-left {
+    &:focus .section-header-left {
       color: var(--color-accent);
     }
   }
@@ -789,7 +799,7 @@
       transform: scale(0.96);
     }
 
-    &:focus-visible {
+    &:focus {
       outline: 2px solid var(--color-accent);
       outline-offset: 2px;
     }
@@ -902,16 +912,21 @@
     flex-shrink: 0;
     min-width: 60px;
     text-align: center;
-    transition: all 0.18s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
 
-    &:hover {
+    &:hover, &:focus {
       background: rgba(128,128,128,0.18);
       border-color: var(--color-accent, #6B7280);
       color: var(--color-accent, #6B7280);
+    }
+
+    &:focus {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
     }
 
     &.recording {
@@ -969,7 +984,7 @@
     padding: 3px 8px;
     cursor: pointer;
     white-space: nowrap;
-    transition: all 0.18s ease;
+    transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
     line-height: 1.4;
 
     &:hover {
@@ -985,16 +1000,11 @@
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
     }
 
-    &:focus-visible {
+    &:focus {
       outline: 2px solid var(--color-accent);
       outline-offset: 2px;
       opacity: 1;
+      background: color-mix(in srgb, var(--color-accent) 12%, rgba(128,128,128,0.1));
     }
-  }
-
-  .shortcut-key-btn:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-    background: color-mix(in srgb, var(--color-accent) 12%, rgba(128,128,128,0.1));
   }
 </style>

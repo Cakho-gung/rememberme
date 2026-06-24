@@ -277,7 +277,7 @@
 		padding: 0;
 		margin: 0.5em 0;
 		
-		li {
+		> li {
 			display: flex;
 			align-items: flex-start;
 			margin-bottom: 6px;
@@ -344,7 +344,7 @@
 		}
 
 		/* Gạch ngang và làm mờ item đã check */
-		li[data-checked="true"] > div {
+		> li[data-checked="true"] > div {
 			text-decoration: line-through;
 			opacity: 0.5;
 		}
@@ -356,7 +356,7 @@
 		margin-top: 0.5em;
 		margin-bottom: 0.5em;
 		
-		li {
+		> li {
 			margin-bottom: 4px;
 			line-height: 1.6;
 		}
@@ -375,7 +375,7 @@
 			margin-bottom: 0.25em;
 		}
 		
-		li {
+		> li {
 			margin-bottom: 4px;
 			line-height: 1.6;
 			position: relative;

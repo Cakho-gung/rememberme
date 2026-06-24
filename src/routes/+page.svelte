@@ -37,7 +37,7 @@
   import { ToastMessages } from "$lib/messages";
   import { checkForAppUpdates } from "$lib/updater";
   import { initOSClass, isMac } from "$lib/osUtils";
-  import { getSavedToggleShortcut, applyToggleShortcut } from "$lib/globalShortcut";
+  import { getSavedToggleShortcut, applyToggleShortcut, matchShortcut, getLocalShortcut } from "$lib/globalShortcut";
 
   import "highlight.js/styles/tokyo-night-dark.css";
   import "katex/dist/katex.min.css";
@@ -102,12 +102,15 @@
     isMenuOpen = false;
   }
 
+  let themeShortcutStr = $state("Alt + I");
+
   function closeSettings() {
     isSettingsOpen = false;
     focusAnimationEnabled =
       localStorage.getItem("focusAnimationEnabled") !== "false";
     // Refresh timer preset so TimerWidget picks up the new config
     currentTimerPreset = localStorage.getItem("timerPreset") ?? "60m";
+    themeShortcutStr = getLocalShortcut("theme-toggle", "Alt + I");
   }
 
   async function startDragging(e: PointerEvent) {
@@ -377,6 +380,12 @@
 
     dismissTimerAlert();
 
+    if (matchShortcut(e, themeShortcutStr)) {
+      e.preventDefault();
+      toggleTheme();
+      return;
+    }
+
     if (e.key === "Escape") {
       if (isSettingsOpen) {
         closeSettings();
@@ -508,12 +517,6 @@
         // Ctrl/Cmd+Shift+R → reload (replaces old Ctrl+R browser reload)
         e.preventDefault();
         window.location.reload();
-        return;
-      }
-
-      if (e.key.toLowerCase() === "i") {
-        e.preventDefault();
-        toggleTheme();
         return;
       }
 
@@ -1135,6 +1138,8 @@
         document.documentElement.style.setProperty("--ui-scale", scaleValue);
       }
     }
+
+    themeShortcutStr = getLocalShortcut("theme-toggle", "Alt + I");
 
     // Xin quyền gửi thông báo khi khởi động app
     await requestNotificationPermission();

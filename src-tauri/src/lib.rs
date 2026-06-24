@@ -62,10 +62,25 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show_i, &hide_i, &quit_i])?;
 
 
-            let _tray = TrayIconBuilder::new()
+            #[cfg(target_os = "macos")]
+            let tray_icon_img = tauri::image::Image::from_bytes(
+                include_bytes!("../icons/trayTemplate.png")
+            ).unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
+
+            #[cfg(not(target_os = "macos"))]
+            let tray_icon_img = tauri::image::Image::from_bytes(
+                include_bytes!("../icons/tray-white.png")
+            ).unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
+
+            let tray_builder = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(true)
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon_img);
+
+            #[cfg(target_os = "macos")]
+            let tray_builder = tray_builder.icon_as_template(true);
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quit" => {
                         std::process::exit(0);
