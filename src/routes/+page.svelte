@@ -40,6 +40,7 @@
   } from "$lib/audio";
   import { showToast } from "$lib/toastStore";
   import { noteToMarkdown } from "$lib/markdown/toMarkdown";
+  import { writeDailySnapshot } from "$lib/snapshot";
   import { copyTextToClipboard } from "$lib/clipboard";
   import { invoke } from "@tauri-apps/api/core";
   import { save } from "@tauri-apps/plugin-dialog";
@@ -1135,6 +1136,8 @@
       if (note) {
         note.updatedAt = Date.now();
         saveNote(note);
+        // Ghi bản chụp theo ngày (bỏ qua nếu content chưa load / null)
+        writeDailySnapshot(note);
       }
     }
     saveIndexCache(mockNotes);

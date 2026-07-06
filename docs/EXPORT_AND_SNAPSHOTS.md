@@ -39,13 +39,14 @@
 3. **Export toàn bộ** (trong Settings): gộp thành **một file Markdown lớn** (mỗi note một tiêu đề, ngăn cách rõ), kèm front-matter title/tags.
 4. *(Tuỳ chọn)* Script CLI mỏng cho agent gọi trực tiếp converter — **chưa làm đợt này**.
 
-### Nhóm 2 — Snapshot theo ngày (làm sau, chờ tín hiệu)
-5. Mỗi ngày, **note nào có sửa** thì cuối ngày app **ghi đè một bản chụp** (dạng Markdown) vào **thư mục theo ngày** (vd `history/YYYY-MM-DD/{uuid}.md`).
-   - Chỉ chụp note có thay đổi → nhẹ.
-   - Sang ngày mới, bản ngày cũ **tự đóng băng**.
-   - Giữ lâu dài; note đã xoá vẫn còn snapshot.
+### Nhóm 2 — Snapshot theo ngày ✅ (đã làm — `src/lib/snapshot.ts`)
+5. Mỗi khi một note được lưu (`flushPersist`), app **ghi đè một bản chụp** Markdown vào `RememberMe/history/{YYYY-MM-DD}/{id}.md`.
+   - Chỉ chụp note có content đã load (đang mở/vừa sửa) → nhẹ; note chưa mở (content null) được **bỏ qua** để không ghi đè bằng nội dung rỗng.
+   - Ghi đè file "hôm nay" mỗi lần lưu → cuối ngày là trạng thái cuối cùng. Sang ngày mới, bản ngày cũ **tự đóng băng**.
+   - Mỗi file có **YAML front-matter**: `id`, `title`, `tags`, `updatedAt`, `snapshotDate` + body Markdown.
+   - Giữ lâu dài; note đã xoá vẫn còn snapshot cũ.
    - **App không tự diff.** Agent đọc các snapshot rồi **tự đối chiếu** để nhận biết thêm/sửa/di chuyển và **dựng timeline**.
-   - Truy vấn "ngày X" mà không có snapshot ngày đó → lấy **bản gần nhất ≤ X**.
+   - Truy vấn "ngày X" mà không có snapshot ngày đó → lấy **bản gần nhất ≤ X** (luật phía agent).
 
 ### Nhóm 3 — Import (để dành)
 6. **Paste-as-Markdown** (`Ctrl+Shift+V`): dán chữ Markdown → tự thành định dạng. Đây mới là dạng import thực dụng nhất.
