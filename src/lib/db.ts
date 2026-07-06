@@ -6,6 +6,7 @@ import {
   BaseDirectory,
   readDir,
   remove,
+  rename,
 } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -43,8 +44,24 @@ const NOTES_DIR = 'RememberMe/notes';
 const INDEX_FILE = 'RememberMe/index.json';
 const TAGS_FILE = 'RememberMe/tags.json';
 const LEGACY_NOTES_FILE = 'RememberMe/notes.json';
+/** Nơi cất file dữ liệu format cũ sau khi đã adapt xong — ẩn khỏi app nhưng không xóa */
+const BACKUP_DIR = 'RememberMe/backup-v1';
 
 let initialized = false;
+
+// ── Migration progress (để UI hiện popup tiến trình) ──
+export interface MigrationProgress {
+  done: number;
+  total: number;
+}
+
+let migrationProgressCb: ((p: MigrationProgress) => void) | null = null;
+
+export function setMigrationProgressListener(
+  cb: ((p: MigrationProgress) => void) | null,
+): void {
+  migrationProgressCb = cb;
+}
 
 export function generateNoteId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -83,85 +100,271 @@ function sortByOrder<T extends NoteMeta>(notes: T[]): T[] {
 /**
  * Load notes (metadata only, content lazy-load sau).
  * Tự xử lý: index hỏng/mất → rebuild từ files; dữ liệu format cũ → migrate.
+ * Cuối cùng LUÔN chạy salvage pass: gắn lại file v2 mồ côi (index bị app cũ
+ * ghi đè) và adapt file số v1 còn sót thành note v2 — không note nào bị bỏ rơi.
  */
 export async function loadNotes(): Promise<Note[]> {
   try {
     await ensureDir();
-
-    const indexExists = await exists(INDEX_FILE, { baseDir: BaseDirectory.Document });
-    if (indexExists) {
-      try {
-        const raw = await readTextFile(INDEX_FILE, { baseDir: BaseDirectory.Document });
-        const parsed = JSON.parse(raw);
-
-        if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.notes)) {
-          const metas = sortByOrder((parsed.notes as NoteMeta[]).map(toMeta));
-          return metas.map((m) => ({ ...m, content: null }));
-        }
-
-        // index là mảng phẳng với id số → format v1, cần migrate
-        if (Array.isArray(parsed)) {
-          return await migrateV1(parsed);
-        }
-      } catch (err) {
-        console.error('[db] Index corrupt, rebuilding from note files:', err);
-      }
-      // Index không đọc được / format lạ → dựng lại từ chính các file note
-      return await rebuildIndex();
-    }
-
-    // Không có index: thử legacy notes.json (v0), rồi thử rebuild, rồi mới coi là trống
-    const legacyExists = await exists(LEGACY_NOTES_FILE, { baseDir: BaseDirectory.Document });
-    if (legacyExists) {
-      const raw = await readTextFile(LEGACY_NOTES_FILE, { baseDir: BaseDirectory.Document });
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return await migrateV1(parsed, /* contentInline */ true);
-      }
-    }
-
-    const rebuilt = await rebuildIndex();
-    return rebuilt;
+    const notes = await loadNotesFromIndex();
+    return await salvageOrphans(notes);
   } catch (err) {
     console.error('[db] Failed to load notes:', err);
     return [];
   }
 }
 
+async function loadNotesFromIndex(): Promise<Note[]> {
+  const indexExists = await exists(INDEX_FILE, { baseDir: BaseDirectory.Document });
+  if (indexExists) {
+    try {
+      const raw = await readTextFile(INDEX_FILE, { baseDir: BaseDirectory.Document });
+      const parsed = JSON.parse(raw);
+
+      if (parsed && parsed.version === SCHEMA_VERSION && Array.isArray(parsed.notes)) {
+        const metas = sortByOrder((parsed.notes as NoteMeta[]).map(toMeta));
+        return metas.map((m) => ({ ...m, content: null }));
+      }
+
+      // index là mảng phẳng với id số → format v1, cần migrate
+      if (Array.isArray(parsed)) {
+        return await migrateV1(parsed);
+      }
+    } catch (err) {
+      console.error('[db] Index corrupt, rebuilding from note files:', err);
+    }
+    // Index không đọc được / format lạ → dựng lại từ chính các file note
+    return await rebuildIndex();
+  }
+
+  // Không có index: ưu tiên dựng lại từ file v2 sẵn có; chỉ khi trắng tay
+  // mới đụng tới legacy notes.json (tránh import trùng nếu cả hai tồn tại)
+  const rebuilt = await rebuildIndex();
+  if (rebuilt.length > 0) return rebuilt;
+
+  const legacyExists = await exists(LEGACY_NOTES_FILE, { baseDir: BaseDirectory.Document });
+  if (legacyExists) {
+    const raw = await readTextFile(LEGACY_NOTES_FILE, { baseDir: BaseDirectory.Document });
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return await migrateV1(parsed, /* contentInline */ true);
+    }
+  }
+
+  return [];
+}
+
+async function backupOldFile(relPath: string, name: string): Promise<void> {
+  try {
+    const backupExists = await exists(BACKUP_DIR, { baseDir: BaseDirectory.Document });
+    if (!backupExists) {
+      await mkdir(BACKUP_DIR, { baseDir: BaseDirectory.Document, recursive: true });
+    }
+    await rename(relPath, `${BACKUP_DIR}/${name}`, {
+      oldPathBaseDir: BaseDirectory.Document,
+      newPathBaseDir: BaseDirectory.Document,
+    });
+  } catch (err) {
+    console.error(`[db] Failed to move ${relPath} to backup:`, err);
+  }
+}
+
+/**
+ * Rút gọn text đầu tiên trong content (HTML string hoặc Tiptap JSON) làm title
+ * cho note được cứu — file content v1 không tự chứa title.
+ */
+function deriveTitle(content: any): string {
+  let text = '';
+  if (typeof content === 'string') {
+    text = content.replace(/<[^>]*>/g, ' ');
+  } else if (content && typeof content === 'object') {
+    const parts: string[] = [];
+    (function walk(node: any) {
+      if (!node || typeof node !== 'object' || parts.join(' ').length > 80) return;
+      if (typeof node.text === 'string') parts.push(node.text);
+      if (Array.isArray(node.content)) node.content.forEach(walk);
+    })(content);
+    text = parts.join(' ');
+  }
+  text = text.replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
+}
+
+/**
+ * Salvage pass — chạy sau mỗi lần load:
+ * 1. File v2 (uuid) có trên đĩa nhưng không có trong index (index bị app bản cũ
+ *    ghi đè, hoặc bị mất entry) → gắn lại vào index.
+ * 2. File content số kiểu v1 (`4.json`) còn sót → adapt thành note v2 mới với
+ *    tag `recovered` (title suy ra từ nội dung), rồi CHUYỂN file gốc vào
+ *    backup-v1/ để không import lại lần sau. Không xóa gì cả.
+ */
+async function salvageOrphans(notes: Note[]): Promise<Note[]> {
+  let changed = false;
+  const knownIds = new Set(notes.map((n) => n.id));
+  let maxOrder = notes.reduce((mx, n) => Math.max(mx, n.order), -1);
+
+  let entries;
+  try {
+    entries = await readDir(NOTES_DIR, { baseDir: BaseDirectory.Document });
+  } catch (err) {
+    console.error('[db] Salvage: cannot read notes dir:', err);
+    return notes;
+  }
+
+  // Xử lý file số theo thứ tự tăng dần để giữ thứ tự tương đối cũ
+  const jsonNames = entries
+    .filter((e) => e.name && e.name.endsWith('.json'))
+    .map((e) => e.name as string)
+    .sort((a, b) => {
+      const na = parseInt(a), nb = parseInt(b);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.localeCompare(b);
+    });
+
+  const numericCandidates = jsonNames.filter(
+    (n) => /^\d+$/.test(n.slice(0, -5)) && !knownIds.has(n.slice(0, -5)),
+  ).length;
+  let numericDone = 0;
+
+  for (const name of jsonNames) {
+    const base = name.slice(0, -5);
+    if (knownIds.has(base)) continue;
+
+    try {
+      const raw = await readTextFile(`${NOTES_DIR}/${name}`, { baseDir: BaseDirectory.Document });
+      const parsed = JSON.parse(raw);
+
+      if (parsed && parsed.version === SCHEMA_VERSION && typeof parsed.id === 'string') {
+        // File v2 mồ côi → gắn lại
+        if (!knownIds.has(parsed.id)) {
+          const meta = toMeta(parsed);
+          meta.order = ++maxOrder;
+          notes.push({ ...meta, content: null });
+          knownIds.add(meta.id);
+          changed = true;
+          console.log(`[db] Salvage: re-attached orphaned note "${meta.title}"`);
+        }
+      } else if (/^\d+$/.test(base)) {
+        // File content v1 còn sót lại
+        numericDone++;
+        migrationProgressCb?.({ done: numericDone, total: numericCandidates });
+
+        // Nếu note này đã được migrate trước đó (v1-{base} có trong index)
+        // và nội dung y hệt → chỉ cần cất file cũ đi, không import trùng
+        const detId = `v1-${base}`;
+        if (knownIds.has(detId)) {
+          const existing = await loadNoteContent(detId);
+          if (JSON.stringify(existing) === JSON.stringify(parsed)) {
+            await backupOldFile(`${NOTES_DIR}/${name}`, name);
+            console.log(`[db] Salvage: ${name} already migrated as ${detId}, moved to backup.`);
+            continue;
+          }
+        }
+
+        // Adapt thành note v2, cất file gốc vào backup
+        const now = Date.now();
+        const recovered: Note = {
+          id: knownIds.has(detId) ? generateNoteId() : detId,
+          title: deriveTitle(parsed) || `Recovered Note ${base}`,
+          tags: ['recovered'],
+          order: ++maxOrder,
+          createdAt: now,
+          updatedAt: now,
+          archived: false,
+          content: parsed,
+        };
+        await writeNoteFile(recovered, parsed);
+        await backupOldFile(`${NOTES_DIR}/${name}`, name);
+        notes.push(recovered);
+        knownIds.add(recovered.id);
+        changed = true;
+        console.log(`[db] Salvage: recovered v1 note ${base} as "${recovered.title}"`);
+      }
+    } catch (err) {
+      console.error(`[db] Salvage: cannot process ${name}:`, err);
+    }
+  }
+
+  if (changed) {
+    sortByOrder(notes);
+    await saveIndexCache(notes);
+  }
+  return notes;
+}
+
+/**
+ * Đọc content của một note v1: ưu tiên notes/, fallback backup-v1/
+ * (trường hợp lần migrate trước bị ngắt sau khi đã move file).
+ */
+async function readV1Content(oldId: string | number): Promise<object | string | null> {
+  for (const dir of [NOTES_DIR, BACKUP_DIR]) {
+    const path = `${dir}/${oldId}.json`;
+    try {
+      if (await exists(path, { baseDir: BaseDirectory.Document })) {
+        return JSON.parse(await readTextFile(path, { baseDir: BaseDirectory.Document }));
+      }
+    } catch (err) {
+      console.error(`[db] Failed to read v1 content at ${path}:`, err);
+    }
+  }
+  return null;
+}
+
+/**
+ * Chọn id v2 cho một note v1. Mặc định deterministic (`v1-{oldId}`) để
+ * migration chạy lại bao nhiêu lần cũng idempotent — không sinh bản trùng.
+ * Nếu file `v1-{oldId}.json` đã tồn tại với NỘI DUNG KHÁC (app bản cũ đã
+ * tái sử dụng id số đó cho một note khác) → cấp id ngẫu nhiên, không ghi đè.
+ */
+async function chooseV2Id(oldId: string | number, content: object | string | null): Promise<string> {
+  const detId = `v1-${oldId}`;
+  const targetPath = `${NOTES_DIR}/${detId}.json`;
+  try {
+    if (await exists(targetPath, { baseDir: BaseDirectory.Document })) {
+      const existing = JSON.parse(await readTextFile(targetPath, { baseDir: BaseDirectory.Document }));
+      if (JSON.stringify(existing.content) !== JSON.stringify(content)) {
+        return generateNoteId();
+      }
+    }
+  } catch {
+    return generateNoteId();
+  }
+  return detId;
+}
+
 /**
  * Migrate dữ liệu format cũ (id số, meta tách khỏi content) sang v2.
+ * User thấy đúng y như cũ: giữ nguyên title, thứ tự, trạng thái archive,
+ * và note đang mở (map lastActiveNoteId). Chạy theo 3 pha để an toàn khi
+ * bị ngắt giữa chừng:
+ *   1. Ghi toàn bộ file v2 (id deterministic → chạy lại không tạo trùng)
+ *   2. Commit index (điểm chuyển đổi duy nhất)
+ *   3. Cất file cũ vào backup-v1/ (fail cũng vô hại)
  * - contentInline=true: nguồn là notes.json cổ (content nằm ngay trong mảng).
- * - Giữ nguyên thứ tự cũ; map lastActiveNoteId trong localStorage sang uuid mới.
  */
 async function migrateV1(oldNotes: any[], contentInline = false): Promise<Note[]> {
-  console.log(`[db] Migrating ${oldNotes.length} notes to schema v2...`);
+  const valid = oldNotes.filter((o) => o != null && o.id != null);
+  console.log(`[db] Migrating ${valid.length} notes to schema v2...`);
   const now = Date.now();
   const savedActiveId = typeof localStorage !== 'undefined'
     ? localStorage.getItem('lastActiveNoteId')
     : null;
 
+  // Pha 1: ghi file v2
   const migrated: Note[] = [];
-  for (let i = 0; i < oldNotes.length; i++) {
-    const old = oldNotes[i];
-    if (old == null || old.id == null) continue;
+  for (let i = 0; i < valid.length; i++) {
+    const old = valid[i];
 
-    let content: object | string | null = null;
+    let content: object | string | null;
     if (contentInline) {
       content = old.content ?? '<p></p>';
     } else {
-      const oldPath = `${NOTES_DIR}/${old.id}.json`;
-      try {
-        if (await exists(oldPath, { baseDir: BaseDirectory.Document })) {
-          content = JSON.parse(await readTextFile(oldPath, { baseDir: BaseDirectory.Document }));
-        }
-      } catch (err) {
-        console.error(`[db] Migration: failed to read content of note ${old.id}:`, err);
-      }
-      if (content === null) content = '<p></p>';
+      content = (await readV1Content(old.id)) ?? '<p></p>';
     }
 
     const note: Note = {
-      id: generateNoteId(),
+      id: await chooseV2Id(old.id, content),
       title: old.title ?? 'Untitled Note',
       tags: [],
       order: i,
@@ -179,17 +382,25 @@ async function migrateV1(oldNotes: any[], contentInline = false): Promise<Note[]
       localStorage.setItem('lastActiveNoteId', note.id);
     }
 
-    // Xóa file content cũ (đã có file v2 thay thế)
-    if (!contentInline) {
-      try {
-        await remove(`${NOTES_DIR}/${old.id}.json`, { baseDir: BaseDirectory.Document });
-      } catch {}
-    }
-
     migrated.push(note);
+    migrationProgressCb?.({ done: i + 1, total: valid.length });
   }
 
+  // Pha 2: commit index — từ đây app đọc hoàn toàn theo v2
   await saveIndexCache(migrated);
+
+  // Pha 3: cất file cũ vào backup (không xóa gì)
+  if (contentInline) {
+    await backupOldFile(LEGACY_NOTES_FILE, 'notes.json');
+  } else {
+    for (const old of valid) {
+      const oldPath = `${NOTES_DIR}/${old.id}.json`;
+      if (await exists(oldPath, { baseDir: BaseDirectory.Document })) {
+        await backupOldFile(oldPath, `${old.id}.json`);
+      }
+    }
+  }
+
   console.log('[db] Migration to v2 complete.');
   return migrated; // content đã load sẵn trong lần migrate này
 }

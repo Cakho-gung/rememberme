@@ -25,6 +25,8 @@
     generateNoteId,
     loadTagColors,
     saveTagColors,
+    setMigrationProgressListener,
+    type MigrationProgress,
     type Note,
   } from "$lib/db";
   import { normalizeTag, getTagColor, collectTags } from "$lib/tags";
@@ -871,6 +873,10 @@
   let mockNotes: Note[] = $state([]);
   let activeNoteId: string = $state("");
 
+  // -- Migration popup state --
+  let migrationProgress = $state<MigrationProgress | null>(null);
+  let migrationRan = false;
+
   // -- Tags State --
   let tagColorOverrides: Record<string, string> = $state({});
   let isTagEditorOpen = $state(false);
@@ -1232,7 +1238,18 @@
 
     tagColorOverrides = await loadTagColors();
 
+    // Hiện popup tiến trình nếu dữ liệu cần nâng cấp format
+    setMigrationProgressListener((p) => {
+      migrationProgress = p;
+      migrationRan = true;
+    });
     const notes = await loadNotes();
+    setMigrationProgressListener(null);
+    migrationProgress = null;
+    if (migrationRan) {
+      showToast(`✅ Notes upgraded — all ${notes.length} notes intact`);
+    }
+
     if (notes.length > 0) {
       mockNotes = notes;
       // Try to load the last active note id from localStorage
@@ -1634,6 +1651,30 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   />
   <Toast />
   <UpdaterPopup />
+
+  <!-- Migration progress popup -->
+  {#if migrationProgress}
+    <div class="migration-overlay" transition:fade={{ duration: 150 }}>
+      <div class="migration-card">
+        <div class="migration-title">Upgrading your notes…</div>
+        <div class="migration-sub">
+          {migrationProgress.done} / {migrationProgress.total} notes
+        </div>
+        <div class="migration-bar">
+          <div
+            class="migration-bar-fill"
+            style="width: {migrationProgress.total > 0
+              ? (migrationProgress.done / migrationProgress.total) * 100
+              : 0}%"
+          ></div>
+        </div>
+        <div class="migration-note">
+          Your notes are being converted to a new format.<br />
+          Nothing is deleted — originals are kept in backup.
+        </div>
+      </div>
+    </div>
+  {/if}
   <div
     class="glass-widget"
     class:collapsed={isCollapsed}
@@ -2684,6 +2725,66 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     &:focus {
       border-bottom: 1px solid $color-accent;
     }
+  }
+
+  // ── Migration popup ──
+  .migration-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bg-focused) 60%, transparent);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+  }
+
+  .migration-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-focused);
+    border: 1px solid var(--dropdown-divider-bg);
+    border-radius: 12px;
+    box-shadow: var(--glass-shadow);
+    padding: 20px 28px;
+    max-width: 280px;
+    text-align: center;
+    font-family: $font-family-mono;
+  }
+
+  .migration-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .migration-sub {
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .migration-bar {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--dropdown-divider-bg);
+    overflow: hidden;
+  }
+
+  .migration-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: $color-accent;
+    transition: width 0.15s ease;
+  }
+
+  .migration-note {
+    font-size: 9px;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    opacity: 0.7;
   }
 
   // ── Tag dots (title row) ──
