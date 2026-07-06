@@ -42,7 +42,7 @@
 	import { ImageCopyExtension } from './ImageCopyExtension';
 
 	interface Props {
-		noteId: number;
+		noteId: string;
 		content: object | string | null;
 		onUpdate?: (content: object) => void;
 		editor?: Editor;
@@ -52,7 +52,7 @@
 
 	let element = $state<HTMLElement>();
 	let bubbleMenuElement = $state<HTMLElement>();
-	let currentNoteId = $state<number>();
+	let currentNoteId = $state<string>();
 	let updateTimeout: ReturnType<typeof setTimeout>;
 	let unlistenDrop: (() => void) | undefined;
 

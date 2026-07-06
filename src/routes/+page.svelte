@@ -2,7 +2,6 @@
   import {
     getCurrentWindow,
     LogicalSize,
-    LogicalPosition,
   } from "@tauri-apps/api/window";
   import { getVersion } from "@tauri-apps/api/app";
   import { fade, slide } from "svelte/transition";
@@ -15,15 +14,22 @@
   import Toast from "$lib/components/Toast.svelte";
   import UpdaterPopup from "$lib/components/UpdaterPopup.svelte";
   import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+  import TagEditor from "$lib/components/TagEditor.svelte";
   import {
     loadNotes,
-    saveIndex,
-    saveNoteContent,
+    saveIndexCache,
+    saveNote,
     deleteNoteData,
     loadNoteContent,
     cleanupOrphanedImages,
+    generateNoteId,
+    loadTagColors,
+    saveTagColors,
+    setMigrationProgressListener,
+    type MigrationProgress,
     type Note,
   } from "$lib/db";
+  import { normalizeTag, getTagColor, collectTags } from "$lib/tags";
   import {
     playCollapse,
     playThemeLight,
@@ -52,7 +58,7 @@
   let isTimerActive = $state(false);
   let focusAnimationEnabled = $state(true);
   // Safe to access localStorage here since this is a Tauri app (client-only, no SSR)
-  let currentTimerPreset = $state<string>(
+  let currentTimerPreset: string = $state(
     localStorage.getItem("timerPreset") ?? "60m",
   );
 
@@ -136,20 +142,24 @@
   }
 
   function createNewNote() {
-    const newId = Math.max(0, ...mockNotes.map((n) => n.id)) + 1;
+    const newId = generateNoteId();
+    const now = Date.now();
     mockNotes = [
       ...mockNotes,
       {
         id: newId,
         title: "New Note",
+        tags: [],
+        order: Math.max(0, ...mockNotes.map((n) => n.order)) + 1,
+        createdAt: now,
+        updatedAt: now,
         archived: false,
         content: "<p></p>",
       },
     ];
     activeNoteId = newId;
     isMenuOpen = false;
-    scheduleSaveIndex();
-    scheduleSaveContent(newId, "<p></p>");
+    schedulePersist(newId);
     editTitle();
   }
 
@@ -164,7 +174,7 @@
     const note = mockNotes.find((n) => n.id === activeNoteId);
     if (note && titleEditValue.trim() !== "") {
       note.title = titleEditValue;
-      scheduleSaveIndex();
+      schedulePersist(note.id);
     }
     isEditingTitle = false;
   }
@@ -182,7 +192,7 @@
     if (note) {
       note.archived = true;
       note.archivedAt = Date.now();
-      scheduleSaveIndex();
+      schedulePersist(note.id);
       // Select next unarchived
       const nextUnarchived = mockNotes.find((n) => !n.archived);
       if (nextUnarchived) {
@@ -192,13 +202,13 @@
     isMenuOpen = false;
   }
 
-  function archiveNoteById(e: Event, id: number) {
+  function archiveNoteById(e: Event, id: string) {
     e.stopPropagation();
     const note = mockNotes.find((n) => n.id === id);
     if (note) {
       note.archived = true;
       note.archivedAt = Date.now();
-      scheduleSaveIndex();
+      schedulePersist(note.id);
     }
   }
 
@@ -219,21 +229,21 @@
     isTrashOpen = false;
   }
 
-  function restoreNote(id: number) {
+  function restoreNote(id: string) {
     const note = mockNotes.find((n) => n.id === id);
     if (note) {
       note.archived = false;
       note.archivedAt = undefined;
-      scheduleSaveIndex();
+      schedulePersist(note.id);
       if (!activeNote) {
         selectNote(note.id);
       }
     }
   }
 
-  function permanentlyDeleteNote(id: number) {
+  function permanentlyDeleteNote(id: string) {
     mockNotes = mockNotes.filter((n) => n.id !== id);
-    scheduleSaveIndex();
+    schedulePersist();
     deleteNoteData(id).then(() => {
       // Run GC after the note JSON is deleted
       cleanupOrphanedImages();
@@ -251,13 +261,13 @@
   let dotStartY = $state(0);
   let currentPointerX = $state(0);
   let currentPointerY = $state(0);
-  let hoveredToolAction = $state<string | null>(null);
+  let hoveredToolAction: string | null = $state(null);
   let headings = $state<
     { text: string; level: number; element: HTMLElement; id: string }[]
   >([]);
-  let hoveredHeadingId = $state<string | null>(null);
-  let hoveredDotNoteId = $state<number | null>(null);
-  let editorInstance = $state<any>(null);
+  let hoveredHeadingId: string | null = $state(null);
+  let hoveredDotNoteId: string | null = $state(null);
+  let editorInstance: any = $state(null);
 
   function cleanupDotDragging(target: HTMLElement, pointerId: number) {
     target.removeEventListener("pointermove", onDotPointerMove);
@@ -673,7 +683,7 @@
       const dropdownItem = el?.closest(".dropdown-item") as HTMLElement;
       const newDotNoteId =
         dropdownItem && dropdownItem.dataset.noteId
-          ? parseInt(dropdownItem.dataset.noteId)
+          ? dropdownItem.dataset.noteId
           : null;
 
       if (
@@ -859,23 +869,72 @@
   }
 
   // -- Notes State --
-  let isLoading = $state(true);
-  let mockNotes = $state<Note[]>([]);
-  let activeNoteId = $state(0);
-  let saveIndexTimeout: ReturnType<typeof setTimeout>;
-  let saveContentTimeout: ReturnType<typeof setTimeout>;
+  let isLoading: boolean = $state(true);
+  let mockNotes: Note[] = $state([]);
+  let activeNoteId: string = $state("");
+
+  // -- Migration popup state --
+  let migrationProgress = $state<MigrationProgress | null>(null);
+  let migrationRan = false;
+
+  // -- Tags State --
+  let tagColorOverrides: Record<string, string> = $state({});
+  let isTagEditorOpen = $state(false);
+  let tagChipsHovered = $state(false);
+  /** Tag đang được chọn làm filter trong menu overlay (OR semantics) */
+  let activeTagFilters = $state<string[]>([]);
+  let allTags = $derived(collectTags(mockNotes));
+
+  function addTagToActiveNote(name: string) {
+    const note = mockNotes.find((n) => n.id === activeNoteId);
+    if (!note) return;
+    const norm = normalizeTag(name);
+    if (!norm || note.tags.includes(norm)) return;
+    note.tags = [...note.tags, norm];
+    schedulePersist(note.id);
+  }
+
+  function removeTagFromActiveNote(name: string) {
+    const note = mockNotes.find((n) => n.id === activeNoteId);
+    if (!note) return;
+    note.tags = note.tags.filter((t) => t !== name);
+    // Tag biến mất khỏi hệ thống → gỡ luôn khỏi filter đang bật
+    activeTagFilters = activeTagFilters.filter((t) =>
+      collectTags(mockNotes).includes(t),
+    );
+    schedulePersist(note.id);
+  }
+
+  function setTagColor(name: string, color: string) {
+    tagColorOverrides[normalizeTag(name)] = color;
+    saveTagColors($state.snapshot(tagColorOverrides));
+  }
+
+  function toggleTagFilter(tag: string) {
+    activeTagFilters = activeTagFilters.includes(tag)
+      ? activeTagFilters.filter((t) => t !== tag)
+      : [...activeTagFilters, tag];
+  }
 
   // ── Pointer-based Drag-and-Drop for Dropdown Note Sorting ──
   // Using Pointer Events instead of HTML5 DragEvent API because Tauri/WebView2
   // on Windows intercepts mousedown at OS level for frameless window dragging,
   // which kills dragstart before it can fire reliably.
-  let draggingNoteId = $state<number | null>(null);
-  let hoveredNoteId = $state<number | null>(null);
+  let draggingNoteId: string | null = $state(null);
+  let hoveredNoteId: string | null = $state(null);
   let dropPosition = $state<"top" | "bottom">("top");
 
-  // Derived notes for the dropdown (reversed so newest appears at top)
+  // Derived notes for the dropdown (reversed so newest appears at top).
+  // Khi có tag filter: chỉ hiện note chứa ÍT NHẤT một tag đang chọn (OR).
   let dropdownNotes = $derived(
-    [...mockNotes].reverse().filter((n) => !n.archived),
+    [...mockNotes]
+      .reverse()
+      .filter((n) => !n.archived)
+      .filter(
+        (n) =>
+          activeTagFilters.length === 0 ||
+          n.tags.some((t) => activeTagFilters.includes(t)),
+      ),
   );
 
   // Internal drag state (not reactive, no need for $state)
@@ -885,8 +944,8 @@
   let _dragActive = false; // true once we've crossed the move threshold
 
   function reorderNotes(
-    draggedId: number,
-    targetId: number,
+    draggedId: string,
+    targetId: string,
     position: "top" | "bottom",
   ) {
     if (draggedId === targetId) return;
@@ -903,18 +962,40 @@
     const insertIndex = position === "bottom" ? tIndex + 1 : tIndex;
     newDropdown.splice(insertIndex, 0, draggedNote);
 
-    // Map the new visual order back to mockNotes (non-archived slots)
+    // Gán order mới cho CHỈ note bị kéo: điểm giữa của 2 hàng xóm mới
+    // (order là số thực → bình thường chỉ cần ghi lại đúng 1 file)
     const newOrderAscending = [...newDropdown].reverse();
-    let idx = 0;
-    for (let i = 0; i < mockNotes.length; i++) {
-      if (!mockNotes[i].archived) {
-        mockNotes[i] = newOrderAscending[idx++];
+    const newIdx = newOrderAscending.findIndex((n) => n.id === draggedId);
+    const prev = newOrderAscending[newIdx - 1];
+    const next = newOrderAscending[newIdx + 1];
+    let newOrder: number;
+    if (prev && next) newOrder = (prev.order + next.order) / 2;
+    else if (prev) newOrder = prev.order + 1;
+    else if (next) newOrder = next.order - 1;
+    else return;
+
+    if ((prev && newOrder === prev.order) || (next && newOrder === next.order)) {
+      // Hết độ chính xác float sau quá nhiều lần chia đôi → đánh số lại toàn bộ
+      newOrderAscending.forEach((n, i) => {
+        n.order = i;
+        schedulePersist(n.id);
+      });
+      let base = newOrderAscending.length;
+      for (const n of mockNotes) {
+        if (n.archived) {
+          n.order = base++;
+          schedulePersist(n.id);
+        }
       }
+    } else {
+      draggedNote.order = newOrder;
+      schedulePersist(draggedId);
     }
-    scheduleSaveIndex();
+
+    mockNotes = [...mockNotes].sort((a, b) => a.order - b.order);
   }
 
-  function onDragHandlePointerDown(e: PointerEvent, id: number) {
+  function onDragHandlePointerDown(e: PointerEvent, id: string) {
     if (e.button !== 0) return;
     e.stopPropagation(); // Prevent title-row / window drag from capturing
     e.preventDefault(); // Prevent text selection during drag
@@ -928,7 +1009,7 @@
     // Do NOT set draggingNoteId here — wait for threshold so clicks don't flicker
   }
 
-  function onDragHandlePointerMove(e: PointerEvent, id: number) {
+  function onDragHandlePointerMove(e: PointerEvent, id: string) {
     if (_dragPointerId !== e.pointerId) return;
 
     const dx = Math.abs(e.clientX - _dragStartX);
@@ -949,7 +1030,7 @@
 
     const targetIdAttr = targetItem.dataset.noteId;
     if (!targetIdAttr) return;
-    const targetId = parseInt(targetIdAttr);
+    const targetId = targetIdAttr;
     if (targetId === id) {
       hoveredNoteId = null;
       return;
@@ -960,7 +1041,7 @@
     dropPosition = e.clientY < rect.top + rect.height / 2 ? "top" : "bottom";
   }
 
-  function onDragHandlePointerUp(e: PointerEvent, id: number) {
+  function onDragHandlePointerUp(e: PointerEvent, id: string) {
     if (_dragPointerId !== e.pointerId) return;
     const handle = e.currentTarget as HTMLElement;
     try {
@@ -985,18 +1066,29 @@
     _dragActive = false;
   }
 
-  function scheduleSaveIndex() {
-    clearTimeout(saveIndexTimeout);
-    saveIndexTimeout = setTimeout(() => {
-      saveIndex(mockNotes);
-    }, 500);
+  // ── Unified persistence ──
+  // Mỗi thay đổi (title, content, tag, archive, order...) đánh dấu note bẩn;
+  // sau debounce ghi các file note bẩn + index cache trong một lượt.
+  const dirtyNoteIds = new Set<string>();
+  let persistTimeout: ReturnType<typeof setTimeout>;
+
+  function schedulePersist(...ids: string[]) {
+    for (const id of ids) dirtyNoteIds.add(id);
+    clearTimeout(persistTimeout);
+    persistTimeout = setTimeout(flushPersist, 500);
   }
 
-  function scheduleSaveContent(id: number, content: any) {
-    clearTimeout(saveContentTimeout);
-    saveContentTimeout = setTimeout(() => {
-      saveNoteContent(id, content);
-    }, 500);
+  function flushPersist() {
+    const ids = [...dirtyNoteIds];
+    dirtyNoteIds.clear();
+    for (const id of ids) {
+      const note = mockNotes.find((n) => n.id === id);
+      if (note) {
+        note.updatedAt = Date.now();
+        saveNote(note);
+      }
+    }
+    saveIndexCache(mockNotes);
   }
 
   // ── Trash Time Grouping ──
@@ -1144,16 +1236,28 @@
     // Xin quyền gửi thông báo khi khởi động app
     await requestNotificationPermission();
 
+    tagColorOverrides = await loadTagColors();
+
+    // Hiện popup tiến trình nếu dữ liệu cần nâng cấp format
+    setMigrationProgressListener((p) => {
+      migrationProgress = p;
+      migrationRan = true;
+    });
     const notes = await loadNotes();
+    setMigrationProgressListener(null);
+    migrationProgress = null;
+    if (migrationRan) {
+      showToast(`✅ Notes upgraded — all ${notes.length} notes intact`);
+    }
+
     if (notes.length > 0) {
       mockNotes = notes;
       // Try to load the last active note id from localStorage
-      const savedNoteIdStr = localStorage.getItem("lastActiveNoteId");
+      const savedNoteId = localStorage.getItem("lastActiveNoteId");
       let targetNote = null;
-      
-      if (savedNoteIdStr) {
-        const parsedId = parseInt(savedNoteIdStr);
-        targetNote = mockNotes.find((n) => n.id === parsedId && !n.archived);
+
+      if (savedNoteId) {
+        targetNote = mockNotes.find((n) => n.id === savedNoteId && !n.archived);
       }
       
       // Fallback to the first non-archived note
@@ -1168,10 +1272,16 @@
         }
       }
     } else {
+      const welcomeId = generateNoteId();
+      const now = Date.now();
       mockNotes = [
         {
-          id: 1,
+          id: welcomeId,
           title: "Welcome to RememberMe",
+          tags: [],
+          order: 0,
+          createdAt: now,
+          updatedAt: now,
           archived: false,
           content: `<h1>Welcome to RememberMe! 🚀</h1>
 <p>Here is a guide to all the syntaxes and features supported in this editor:</p>
@@ -1224,9 +1334,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 `,
         },
       ];
-      activeNoteId = 1;
-      await saveIndex(mockNotes);
-      await saveNoteContent(1, mockNotes[0].content);
+      activeNoteId = welcomeId;
+      await saveNote(mockNotes[0]);
+      await saveIndexCache(mockNotes);
     }
     isLoading = false;
 
@@ -1249,9 +1359,10 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       mockNotes.find((n) => !n.archived),
   );
 
-  async function selectNote(id: number) {
+  async function selectNote(id: string) {
     activeNoteId = id;
     isDropdownOpen = false;
+    isTagEditorOpen = false;
     const note = mockNotes.find((n) => n.id === id);
     if (note && note.content === null) {
       note.content = await loadNoteContent(id);
@@ -1324,8 +1435,8 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   });
 
   $effect(() => {
-    if (activeNoteId !== 0) {
-      localStorage.setItem("lastActiveNoteId", activeNoteId.toString());
+    if (activeNoteId) {
+      localStorage.setItem("lastActiveNoteId", activeNoteId);
     }
   });
 
@@ -1540,15 +1651,37 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   />
   <Toast />
   <UpdaterPopup />
+
+  <!-- Migration progress popup -->
+  {#if migrationProgress}
+    <div class="migration-overlay" transition:fade={{ duration: 150 }}>
+      <div class="migration-card">
+        <div class="migration-title">Upgrading your notes…</div>
+        <div class="migration-sub">
+          {migrationProgress.done} / {migrationProgress.total} notes
+        </div>
+        <div class="migration-bar">
+          <div
+            class="migration-bar-fill"
+            style="width: {migrationProgress.total > 0
+              ? (migrationProgress.done / migrationProgress.total) * 100
+              : 0}%"
+          ></div>
+        </div>
+        <div class="migration-note">
+          Your notes are being converted to a new format.<br />
+          Nothing is deleted — originals are kept in backup.
+        </div>
+      </div>
+    </div>
+  {/if}
   <div
     class="glass-widget"
     class:collapsed={isCollapsed}
     class:glow-active={(isWindowFocused && focusAnimationEnabled) ||
       isTimerAlerting}
     class:timer-alerting={isTimerAlerting}
-    style="background-color: {isWindowFocused
-      ? 'var(--bg-focused)'
-      : 'var(--bg-unfocused)'}; transition: background-color 0.3s ease; height: 100%;"
+    style="background-color: var(--bg-focused); transition: background-color 0.3s ease; height: 100%;"
     onscroll={(e) => { const el = e.currentTarget; el.scrollTop = 0; el.scrollLeft = 0; }}
   >
     <!-- Expanded drag region to cover top padding -->
@@ -1596,6 +1729,29 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             </button>
           {/if}
 
+          <!-- Tag color dots (hover: show names, click: edit) -->
+          {#if activeNote && !isEditingTitle}
+            <button
+              class="tag-dots-cluster"
+              class:empty={activeNote.tags.length === 0}
+              aria-label="Edit tags"
+              onclick={() => (isTagEditorOpen = !isTagEditorOpen)}
+              onpointerenter={() => (tagChipsHovered = true)}
+              onpointerleave={() => (tagChipsHovered = false)}
+            >
+              {#if activeNote.tags.length > 0}
+                {#each activeNote.tags as tag (tag)}
+                  <span
+                    class="title-tag-dot"
+                    style="background-color: {getTagColor(tag, tagColorOverrides)}"
+                  ></span>
+                {/each}
+              {:else}
+                <span class="tag-add-ghost">+</span>
+              {/if}
+            </button>
+          {/if}
+
           <!-- Chevron icon for collapse/expand -->
           <button
             class="title-icon-btn"
@@ -1619,6 +1775,34 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             </svg>
           </button>
         </div>
+
+        <!-- Floating tag name chips (shown while hovering the dot cluster) -->
+        {#if tagChipsHovered && !isTagEditorOpen && activeNote && activeNote.tags.length > 0}
+          <div class="tag-chips-float" transition:fade={{ duration: 120 }}>
+            {#each activeNote.tags as tag (tag)}
+              <span class="float-chip">
+                <span
+                  class="float-chip-dot"
+                  style="background-color: {getTagColor(tag, tagColorOverrides)}"
+                ></span>
+                {tag}
+              </span>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Tag editor popover -->
+        {#if isTagEditorOpen && activeNote}
+          <TagEditor
+            tags={activeNote.tags}
+            {allTags}
+            colorOverrides={tagColorOverrides}
+            onAdd={addTagToActiveNote}
+            onRemove={removeTagFromActiveNote}
+            onColorChange={setTagColor}
+            onClose={() => (isTagEditorOpen = false)}
+          />
+        {/if}
 
         <!-- Dropdown Table of Contents -->
         {#if isDropdownOpen && !isCollapsed}
@@ -1660,7 +1844,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
               onUpdate={(content) => {
                 if (activeNote) {
                   activeNote.content = content;
-                  scheduleSaveContent(activeNote.id, content);
+                  schedulePersist(activeNote.id);
                 }
               }}
             />
@@ -1670,9 +1854,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
         <!-- Editor Fade Overlay (Solid color with mask, transitions perfectly with glass-widget) -->
         <div
           class="editor-fade-overlay"
-          style="background-color: {isWindowFocused
-            ? 'var(--bg-focused)'
-            : 'var(--bg-unfocused)'}"
+          style="background-color: var(--bg-focused);"
         ></div>
       {/if}
 
@@ -1947,7 +2129,36 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             class="toc-container notes-overlay-container"
             transition:fade={{ duration: 150 }}
           >
-            <div class="toc-title">Notes</div>
+            <div class="toc-title notes-title-row">
+              <span>Notes</span>
+              {#if allTags.length > 0}
+                <div class="tag-filter-dots">
+                  {#each allTags as tag (tag)}
+                    <button
+                      class="tag-filter-dot"
+                      class:active={activeTagFilters.includes(tag)}
+                      style="--tag-color: {getTagColor(tag, tagColorOverrides)}"
+                      aria-label="Filter by {tag}"
+                      use:tooltip={{ text: tag, position: "bottom" }}
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        toggleTagFilter(tag);
+                      }}
+                    ></button>
+                  {/each}
+                  {#if activeTagFilters.length > 0}
+                    <button
+                      class="tag-filter-clear"
+                      aria-label="Clear tag filter"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        activeTagFilters = [];
+                      }}>×</button
+                    >
+                  {/if}
+                </div>
+              {/if}
+            </div>
             <div
               class="toc-list dropdown-list"
               style="max-height: none; padding: 0;"
@@ -2002,6 +2213,16 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                     class:active={note.id === activeNoteId}
                     >{note.title || "Untitled Note"}</span
                   >
+                  {#if note.tags.length > 0}
+                    <span class="item-tag-dots">
+                      {#each note.tags as tag (tag)}
+                        <span
+                          class="item-tag-dot"
+                          style="background-color: {getTagColor(tag, tagColorOverrides)}"
+                        ></span>
+                      {/each}
+                    </span>
+                  {/if}
                   <button
                     class="archive-item-btn"
                     onclick={(e) => archiveNoteById(e, note.id)}
@@ -2023,6 +2244,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                     </svg>
                   </button>
                 </div>
+              {:else}
+                {#if activeTagFilters.length > 0}
+                  <div class="toc-empty" style="opacity: 0.5; padding: 4px 8px;">
+                    (・_・;) No notes match the selected tags
+                  </div>
+                {/if}
               {/each}
 
               <div
@@ -2500,6 +2727,217 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     }
   }
 
+  // ── Migration popup ──
+  .migration-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--bg-focused) 60%, transparent);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+  }
+
+  .migration-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-focused);
+    border: 1px solid var(--dropdown-divider-bg);
+    border-radius: 12px;
+    box-shadow: var(--glass-shadow);
+    padding: 20px 28px;
+    max-width: 280px;
+    text-align: center;
+    font-family: $font-family-mono;
+  }
+
+  .migration-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .migration-sub {
+    font-size: 11px;
+    color: var(--color-text-muted);
+  }
+
+  .migration-bar {
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--dropdown-divider-bg);
+    overflow: hidden;
+  }
+
+  .migration-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: $color-accent;
+    transition: width 0.15s ease;
+  }
+
+  .migration-note {
+    font-size: 9px;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+  }
+
+  // ── Tag dots (title row) ──
+  .tag-dots-cluster {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    padding: 4px 2px;
+    margin: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    // Ghost "+" khi note chưa có tag: chỉ hiện khi hover vào title row
+    &.empty {
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+  }
+
+  .title-row:hover .tag-dots-cluster.empty {
+    opacity: 0.45;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  .title-tag-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+
+  .tag-dots-cluster:hover .title-tag-dot {
+    transform: scale(1.2);
+  }
+
+  .tag-add-ghost {
+    font-family: $font-family-mono;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--color-text-muted);
+  }
+
+  .tag-chips-float {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    max-width: calc(100% - 60px);
+    z-index: 90;
+    pointer-events: none;
+  }
+
+  .float-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: $font-family-mono;
+    font-size: 10px;
+    color: var(--color-text);
+    background: var(--bg-focused);
+    border: 1px solid var(--dropdown-divider-bg);
+    border-radius: 99px;
+    padding: 3px 9px;
+    box-shadow: var(--glass-shadow);
+    white-space: nowrap;
+  }
+
+  .float-chip-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  // ── Tag filter (notes overlay) ──
+  .notes-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    // Ghi đè lại màu chữ cho span "Notes" về đúng độ mờ của toc-title
+    > span {
+      color: color-mix(in srgb, #{$color-text} 40%, transparent);
+    }
+  }
+
+  .tag-filter-dots {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tag-filter-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    background: var(--tag-color);
+    cursor: pointer;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+
+    &:hover {
+      transform: scale(1.2);
+    }
+
+    &.active {
+      transform: scale(1.25);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--tag-color) 45%, transparent);
+    }
+  }
+
+  .tag-filter-clear {
+    background: transparent;
+    border: none;
+    padding: 0 2px;
+    font-size: 12px;
+    line-height: 1;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    opacity: 0.6;
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+
+  // ── Tag dots (per note row in dropdown) ──
+  .item-tag-dots {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+
+  .item-tag-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
   .dropdown-list {
     display: flex;
     flex-direction: column;
@@ -2604,13 +3042,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     padding: 4px 2px;
     cursor: grab;
     color: $color-text;
-    opacity: 0.25;
-    transition: opacity 0.2s ease;
+    opacity: 1;
     margin-right: 2px;
     touch-action: none; // Required for Pointer Events to fire on touch/stylus without scroll interference
 
     &:hover {
-      opacity: 0.6;
+      opacity: 1;
     }
 
     &:active {
@@ -2723,7 +3160,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
   /* macOS WKWebView: backdrop-filter causes jank in WKWebView — use solid background. */
   :global([data-os="macos"]) .menu-overlay {
-    background-color: color-mix(in srgb, var(--bg-focused) 96%, transparent);
+    background-color: color-mix(in srgb, var(--bg-focused) 100%, transparent);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -3307,8 +3744,8 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    color: $color-text;
-    opacity: 0.4;
+    // Dùng color-mix thay vì opacity để tránh kế thừa xuống các phần tử con (chấm filter tag)
+    color: color-mix(in srgb, #{$color-text} 40%, transparent);
     margin-bottom: 8px;
     padding-left: 8px;
     width: 100%;
