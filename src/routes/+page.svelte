@@ -41,6 +41,8 @@
   import { showToast } from "$lib/toastStore";
   import { noteToMarkdown } from "$lib/markdown/toMarkdown";
   import { copyTextToClipboard } from "$lib/clipboard";
+  import { invoke } from "@tauri-apps/api/core";
+  import { save } from "@tauri-apps/plugin-dialog";
   import { tooltip } from "$lib/tooltip";
   import { ToastMessages } from "$lib/messages";
   import { checkForAppUpdates } from "$lib/updater";
@@ -214,12 +216,20 @@
     }
   }
 
-  /** Copy một note ra Markdown vào clipboard (để đưa cho AI / dán chỗ khác). */
-  async function copyNoteAsMarkdown(e: Event, id: string) {
-    e.stopPropagation();
-    const note = mockNotes.find((n) => n.id === id);
+  /** Đổi title thành tên file an toàn (bỏ ký tự cấm trên Windows). */
+  function safeFileName(name: string): string {
+    const cleaned = (name || "Untitled Note")
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return (cleaned || "Untitled Note").slice(0, 80);
+  }
+
+  /** Copy note ĐANG MỞ ra Markdown vào clipboard (nút trên thanh công cụ). */
+  async function copyActiveNoteAsMarkdown() {
+    const note = mockNotes.find((n) => n.id === activeNoteId);
     if (!note) return;
-    const content = note.content ?? (await loadNoteContent(id));
+    const content = note.content ?? (await loadNoteContent(note.id));
     const md = noteToMarkdown({ title: note.title, tags: note.tags, content });
     const ok = await copyTextToClipboard(md);
     showToast(
@@ -227,6 +237,27 @@
         ? `📋 Copied "${note.title || "Untitled Note"}" as Markdown`
         : `❌ Copy failed`,
     );
+  }
+
+  /** Lưu một note thành file .md qua hộp thoại Save As của hệ thống. */
+  async function saveNoteAsMarkdown(e: Event, id: string) {
+    e.stopPropagation();
+    const note = mockNotes.find((n) => n.id === id);
+    if (!note) return;
+    const content = note.content ?? (await loadNoteContent(id));
+    const md = noteToMarkdown({ title: note.title, tags: note.tags, content });
+    try {
+      const filePath = await save({
+        defaultPath: `${safeFileName(note.title)}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (!filePath) return; // user hủy
+      await invoke("write_text_file", { path: filePath, contents: md });
+      showToast(`💾 Saved "${note.title || "Untitled Note"}.md"`);
+    } catch (err) {
+      console.error("[export] save as failed:", err);
+      showToast("❌ Save failed");
+    }
   }
 
   // -- Interaction State --
@@ -733,6 +764,7 @@
       if (action) {
         if (action === "create") createNewNote();
         else if (action === "edit") editTitle();
+        else if (action === "copymd") copyActiveNoteAsMarkdown();
         else if (action === "archive") archiveNote();
         else if (action === "pin") togglePin();
         else if (action === "settings") handleSettings();
@@ -1948,6 +1980,30 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
             </svg>
           </button>
           <button
+            class="tool-btn delay-4"
+            class:drag-hover={hoveredToolAction === "copymd"}
+            data-action="copymd"
+            onclick={copyActiveNoteAsMarkdown}
+            aria-label="Copy as Markdown"
+            use:tooltip={{ text: 'Copy as Markdown' }}
+          >
+            <svg
+              class="tool-icon"
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <rect x="8" y="8" width="13" height="13" rx="2" ry="2" />
+              <path d="M16 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2" />
+            </svg>
+          </button>
+          <button
             class="tool-btn delay-3"
             class:drag-hover={hoveredToolAction === "archive"}
             data-action="archive"
@@ -2242,24 +2298,25 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                   {/if}
                   <button
                     class="archive-item-btn"
-                    onclick={(e) => copyNoteAsMarkdown(e, note.id)}
-                    aria-label="Copy as Markdown"
+                    onclick={(e) => saveNoteAsMarkdown(e, note.id)}
+                    aria-label="Save as Markdown file"
                     use:tooltip={{ position: 'left' }}
                   >
                     <svg
                       class="item-icon"
                       width="16"
                       height="16"
-                      viewBox="0 0 16 16"
+                      viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
-                      stroke-width="1.3"
+                      stroke-width="1.6"
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       xmlns="http://www.w3.org/2000/svg"
                     >
-                      <rect x="5.5" y="5.5" width="8.5" height="9" rx="1.3" />
-                      <path d="M10.5 5.5V3.2c0-.66-.54-1.2-1.2-1.2H3.2C2.54 2 2 2.54 2 3.2v7.3c0 .66.54 1.2 1.2 1.2h2.3" />
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                      <polyline points="17 21 17 13 7 13 7 21" />
+                      <polyline points="7 3 7 8 15 8" />
                     </svg>
                   </button>
                   <button

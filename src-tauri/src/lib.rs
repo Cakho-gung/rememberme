@@ -48,6 +48,13 @@ fn save_image(app: tauri::AppHandle, image_base64: String, ext: String) -> Resul
         .ok_or_else(|| "Invalid file path encoding".to_string())
 }
 
+/// Write UTF-8 text to an absolute path (chosen via the Save dialog).
+/// Runs in Rust so it isn't limited by the JS fs capability scope.
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| format!("Cannot write file: {e}"))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -124,7 +131,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .invoke_handler(tauri::generate_handler![save_image, delete_image, delete_image_by_name])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![save_image, delete_image, delete_image_by_name, write_text_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

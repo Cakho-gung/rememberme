@@ -31,6 +31,8 @@
     "notification:default",
     "updater:default",
     "process:default",
+    "dialog:default",
+    "dialog:allow-save",
     "global-shortcut:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister-all",
