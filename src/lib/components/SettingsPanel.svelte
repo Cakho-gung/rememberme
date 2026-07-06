@@ -2,8 +2,13 @@
   import { onMount } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { writeTextFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
   import { isSoundEnabled, setSoundEnabled } from '$lib/audio';
   import { applyToggleShortcut, getSavedToggleShortcut, getLocalShortcut } from '$lib/globalShortcut';
+  import { loadNotes, loadNoteContent } from '$lib/db';
+  import { notesToMarkdown, type NoteLike } from '$lib/markdown/toMarkdown';
+  import { copyTextToClipboard } from '$lib/clipboard';
+  import { showToast } from '$lib/toastStore';
 
   // ── Props ──
   let {
@@ -56,7 +61,7 @@
   function getFlatNavItems(): HTMLElement[] {
     if (!panelEl) return [];
     const items: HTMLElement[] = [];
-    const sectionStates = [soundOpen, uiScaleOpen, timerOpen, shortcutsOpen];
+    const sectionStates = [soundOpen, uiScaleOpen, timerOpen, shortcutsOpen, exportOpen];
     panelEl.querySelectorAll<HTMLElement>('.settings-section').forEach((section, idx) => {
       const header = section.querySelector<HTMLElement>('.section-header');
       if (header) items.push(header);
@@ -281,6 +286,57 @@
   let uiScaleOpen = $state(false);
   let timerOpen = $state(false);
   let shortcutsOpen = $state(false);
+  let exportOpen = $state(false);
+
+  // ── Export ──
+  let isExporting = $state(false);
+
+  /** Gom mọi note đang hiển thị (không archived) ra Markdown, content load đầy đủ. */
+  async function gatherAllMarkdown(): Promise<{ md: string; count: number }> {
+    const notes = (await loadNotes()).filter((n) => !n.archived);
+    const withContent: NoteLike[] = [];
+    for (const n of notes) {
+      const content = n.content ?? (await loadNoteContent(n.id));
+      withContent.push({ title: n.title, tags: n.tags, content });
+    }
+    return { md: notesToMarkdown(withContent), count: withContent.length };
+  }
+
+  async function copyAllMarkdown() {
+    if (isExporting) return;
+    isExporting = true;
+    try {
+      const { md, count } = await gatherAllMarkdown();
+      const ok = await copyTextToClipboard(md);
+      showToast(ok ? `📋 Copied ${count} notes as Markdown` : '❌ Copy failed');
+    } catch (err) {
+      console.error('[export] copy all failed:', err);
+      showToast('❌ Export failed');
+    } finally {
+      isExporting = false;
+    }
+  }
+
+  async function exportAllToFile() {
+    if (isExporting) return;
+    isExporting = true;
+    try {
+      const { md, count } = await gatherAllMarkdown();
+      const dir = 'RememberMe/exports';
+      if (!(await exists(dir, { baseDir: BaseDirectory.Document }))) {
+        await mkdir(dir, { baseDir: BaseDirectory.Document, recursive: true });
+      }
+      const stamp = new Date().toISOString().slice(0, 10);
+      const relPath = `${dir}/RememberMe-export-${stamp}.md`;
+      await writeTextFile(relPath, md, { baseDir: BaseDirectory.Document });
+      showToast(`💾 Exported ${count} notes → Documents/${relPath}`);
+    } catch (err) {
+      console.error('[export] export to file failed:', err);
+      showToast('❌ Export failed');
+    } finally {
+      isExporting = false;
+    }
+  }
 
   // ── Timer Limit ──
   type TimerPreset = '20s' | '60m' | '2h' | '4h' | '8h';
@@ -573,6 +629,48 @@
                 </button>
               </div>
             {/each}
+          </div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="section-divider"></div>
+
+    <!-- ── Section 5: Export ── -->
+    <div class="settings-section">
+      <button class="section-header" onclick={() => exportOpen = !exportOpen} aria-expanded={exportOpen}>
+        <div class="section-header-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          <span>Export</span>
+        </div>
+        <svg class="chevron {exportOpen ? 'open' : ''}" width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M7.18963 10.5875C7.43137 10.8142 7.81065 10.8019 8.03729 10.5602L12.0373 6.31016C12.2639 6.06841 12.2517 5.68914 12.0099 5.4625C11.7682 5.23586 11.3889 5.24809 11.1623 5.48984L7.57246 9.35584L3.98263 5.48984C3.75599 5.24809 3.37672 5.23586 3.13497 5.4625C2.89322 5.68914 2.88099 6.06841 3.10763 6.31016L7.10763 10.5602L7.18963 10.5875Z"/>
+        </svg>
+      </button>
+
+      {#if exportOpen}
+        <div class="section-body" transition:fly={{ y: -4, duration: 150 }}>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Copy all as Markdown</span>
+              <span class="setting-desc">Gộp mọi note thành Markdown và chép vào clipboard.</span>
+            </div>
+            <button class="export-btn" onclick={copyAllMarkdown} disabled={isExporting}>
+              {isExporting ? 'Working…' : 'Copy'}
+            </button>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Export all to file</span>
+              <span class="setting-desc">Lưu một file .md vào Documents/RememberMe/exports/.</span>
+            </div>
+            <button class="export-btn" onclick={exportAllToFile} disabled={isExporting}>
+              {isExporting ? 'Working…' : 'Export'}
+            </button>
           </div>
         </div>
       {/if}
@@ -934,6 +1032,39 @@
       border-color: var(--color-accent, #6B7280);
       color: var(--color-accent, #6B7280);
       animation: pulse-border 1s ease infinite;
+    }
+  }
+
+  .export-btn {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text);
+    background: rgba(128,128,128,0.1);
+    border: 1px solid rgba(128,128,128,0.18);
+    border-radius: 5px;
+    padding: 4px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    min-width: 68px;
+    text-align: center;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+
+    &:hover:not(:disabled), &:focus:not(:disabled) {
+      background: rgba(128,128,128,0.18);
+      border-color: var(--color-accent, #6B7280);
+      color: var(--color-accent, #6B7280);
+    }
+
+    &:focus {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    &:disabled {
+      opacity: 0.55;
+      cursor: default;
     }
   }
 

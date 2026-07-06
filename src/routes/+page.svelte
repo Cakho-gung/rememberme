@@ -39,6 +39,8 @@
     loadSoundPreference,
   } from "$lib/audio";
   import { showToast } from "$lib/toastStore";
+  import { noteToMarkdown } from "$lib/markdown/toMarkdown";
+  import { copyTextToClipboard } from "$lib/clipboard";
   import { tooltip } from "$lib/tooltip";
   import { ToastMessages } from "$lib/messages";
   import { checkForAppUpdates } from "$lib/updater";
@@ -210,6 +212,21 @@
       note.archivedAt = Date.now();
       schedulePersist(note.id);
     }
+  }
+
+  /** Copy một note ra Markdown vào clipboard (để đưa cho AI / dán chỗ khác). */
+  async function copyNoteAsMarkdown(e: Event, id: string) {
+    e.stopPropagation();
+    const note = mockNotes.find((n) => n.id === id);
+    if (!note) return;
+    const content = note.content ?? (await loadNoteContent(id));
+    const md = noteToMarkdown({ title: note.title, tags: note.tags, content });
+    const ok = await copyTextToClipboard(md);
+    showToast(
+      ok
+        ? `📋 Copied "${note.title || "Untitled Note"}" as Markdown`
+        : `❌ Copy failed`,
+    );
   }
 
   // -- Interaction State --
@@ -2223,6 +2240,28 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                       {/each}
                     </span>
                   {/if}
+                  <button
+                    class="archive-item-btn"
+                    onclick={(e) => copyNoteAsMarkdown(e, note.id)}
+                    aria-label="Copy as Markdown"
+                    use:tooltip={{ position: 'left' }}
+                  >
+                    <svg
+                      class="item-icon"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <rect x="5.5" y="5.5" width="8.5" height="9" rx="1.3" />
+                      <path d="M10.5 5.5V3.2c0-.66-.54-1.2-1.2-1.2H3.2C2.54 2 2 2.54 2 3.2v7.3c0 .66.54 1.2 1.2 1.2h2.3" />
+                    </svg>
+                  </button>
                   <button
                     class="archive-item-btn"
                     onclick={(e) => archiveNoteById(e, note.id)}
