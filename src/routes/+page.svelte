@@ -187,8 +187,17 @@
     if (e.key === "Escape") {
       isEditingTitle = false;
     } else if (e.key === "Enter") {
+      e.preventDefault();
       saveTitle();
+      // Sau khi xác nhận tên, đưa con trỏ vào vùng soạn thảo để viết luôn
+      focusEditor();
     }
+  }
+
+  /** Focus vào editor (chờ DOM cập nhật xong khi vừa thoát chế độ sửa tên). */
+  async function focusEditor() {
+    await tick();
+    editorInstance?.commands?.focus?.("end");
   }
 
   function archiveNote() {
@@ -1796,7 +1805,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                   ></span>
                 {/each}
               {:else}
-                <span class="tag-add-ghost">+</span>
+                <span class="tag-add-ghost">#</span>
               {/if}
             </button>
           {/if}
@@ -2924,7 +2933,8 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
   .tag-add-ghost {
     font-family: $font-family-mono;
-    font-size: 12px;
+    font-size: 15px;
+    font-weight: 600;
     line-height: 1;
     color: var(--color-text-muted);
   }
