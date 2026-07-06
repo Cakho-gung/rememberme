@@ -170,34 +170,13 @@ async function backupOldFile(relPath: string, name: string): Promise<void> {
 }
 
 /**
- * Rút gọn text đầu tiên trong content (HTML string hoặc Tiptap JSON) làm title
- * cho note được cứu — file content v1 không tự chứa title.
- */
-function deriveTitle(content: any): string {
-  let text = '';
-  if (typeof content === 'string') {
-    text = content.replace(/<[^>]*>/g, ' ');
-  } else if (content && typeof content === 'object') {
-    const parts: string[] = [];
-    (function walk(node: any) {
-      if (!node || typeof node !== 'object' || parts.join(' ').length > 80) return;
-      if (typeof node.text === 'string') parts.push(node.text);
-      if (Array.isArray(node.content)) node.content.forEach(walk);
-    })(content);
-    text = parts.join(' ');
-  }
-  text = text.replace(/\s+/g, ' ').trim();
-  if (!text) return '';
-  return text.length > 40 ? `${text.slice(0, 40)}…` : text;
-}
-
-/**
  * Salvage pass — chạy sau mỗi lần load:
  * 1. File v2 (uuid) có trên đĩa nhưng không có trong index (index bị app bản cũ
- *    ghi đè, hoặc bị mất entry) → gắn lại vào index.
- * 2. File content số kiểu v1 (`4.json`) còn sót → adapt thành note v2 mới với
- *    tag `recovered` (title suy ra từ nội dung), rồi CHUYỂN file gốc vào
- *    backup-v1/ để không import lại lần sau. Không xóa gì cả.
+ *    ghi đè, hoặc bị mất entry) → gắn lại vào index (không mất dữ liệu v2 thật).
+ * 2. File số kiểu v1 (`4.json`) còn sót nhưng KHÔNG có trong index v1 → theo
+ *    semantics V1 (index là nguồn sự thật), đây là note user đã XOÁ ở bản cũ
+ *    (delete cũ chỉ gỡ entry, để lại file). Tôn trọng ý định user: XOÁ HẲN file,
+ *    không hồi sinh. File v1 của note thật đã được migrateV1 cất vào backup-v1/.
  */
 async function salvageOrphans(notes: Note[]): Promise<Note[]> {
   let changed = false;
@@ -222,11 +201,6 @@ async function salvageOrphans(notes: Note[]): Promise<Note[]> {
       return a.localeCompare(b);
     });
 
-  const numericCandidates = jsonNames.filter(
-    (n) => /^\d+$/.test(n.slice(0, -5)) && !knownIds.has(n.slice(0, -5)),
-  ).length;
-  let numericDone = 0;
-
   for (const name of jsonNames) {
     const base = name.slice(0, -5);
     if (knownIds.has(base)) continue;
@@ -246,40 +220,12 @@ async function salvageOrphans(notes: Note[]): Promise<Note[]> {
           console.log(`[db] Salvage: re-attached orphaned note "${meta.title}"`);
         }
       } else if (/^\d+$/.test(base)) {
-        // File content v1 còn sót lại
-        numericDone++;
-        migrationProgressCb?.({ done: numericDone, total: numericCandidates });
-
-        // Nếu note này đã được migrate trước đó (v1-{base} có trong index)
-        // và nội dung y hệt → chỉ cần cất file cũ đi, không import trùng
-        const detId = `v1-${base}`;
-        if (knownIds.has(detId)) {
-          const existing = await loadNoteContent(detId);
-          if (JSON.stringify(existing) === JSON.stringify(parsed)) {
-            await backupOldFile(`${NOTES_DIR}/${name}`, name);
-            console.log(`[db] Salvage: ${name} already migrated as ${detId}, moved to backup.`);
-            continue;
-          }
-        }
-
-        // Adapt thành note v2, cất file gốc vào backup
-        const now = Date.now();
-        const recovered: Note = {
-          id: knownIds.has(detId) ? generateNoteId() : detId,
-          title: deriveTitle(parsed) || `Recovered Note ${base}`,
-          tags: ['recovered'],
-          order: ++maxOrder,
-          createdAt: now,
-          updatedAt: now,
-          archived: false,
-          content: parsed,
-        };
-        await writeNoteFile(recovered, parsed);
-        await backupOldFile(`${NOTES_DIR}/${name}`, name);
-        notes.push(recovered);
-        knownIds.add(recovered.id);
-        changed = true;
-        console.log(`[db] Salvage: recovered v1 note ${base} as "${recovered.title}"`);
+        // File số kiểu v1 không có trong index v1 = note user đã XOÁ ở bản cũ.
+        // Nội dung của note thật đã được migrateV1 chép sang v2 + cất bản gốc
+        // vào backup-v1/, nên file số còn sót ở đây chỉ có thể là note đã xoá.
+        // → Xoá hẳn, tôn trọng trạng thái đã-xoá, không hồi sinh.
+        await remove(`${NOTES_DIR}/${name}`, { baseDir: BaseDirectory.Document });
+        console.log(`[db] Salvage: removed deleted-note leftover ${name}`);
       }
     } catch (err) {
       console.error(`[db] Salvage: cannot process ${name}:`, err);
