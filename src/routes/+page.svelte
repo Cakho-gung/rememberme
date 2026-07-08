@@ -460,6 +460,9 @@
       }
       if (isDropdownOpen) {
         isDropdownOpen = false;
+        // Re-focus editor without scrolling (preventScroll avoids TipTap scrolling cursor into view)
+        await tick();
+        editorInstance?.view?.dom?.focus?.({ preventScroll: true });
         return;
       }
       isMenuOpen = false;
@@ -482,10 +485,11 @@
       }
       if (e.key === "Enter" && tocFocusedIndex >= 0) {
         e.preventDefault();
+        e.stopPropagation();
         const focused = headings[tocFocusedIndex];
         if (focused) {
-          scrollToHeading(focused);
           isDropdownOpen = false;
+          scrollToHeading(focused, true);
         }
         return;
       }
@@ -567,8 +571,14 @@
         if (!isCollapsed) {
           isDropdownOpen = !isDropdownOpen;
           if (isDropdownOpen) {
+            // Blur editor so keyboard events (ArrowUp/Down, Enter) go to TOC only
+            editorInstance?.commands?.blur?.();
             await tick();
             tocFocusedIndex = headings.length > 0 ? 0 : -1;
+          } else {
+            // TOC closed without selection → restore editor focus without scrolling
+            await tick();
+            editorInstance?.view?.dom?.focus?.({ preventScroll: true });
           }
         }
         return;
@@ -1498,12 +1508,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     }
   });
 
-  function scrollToHeading(heading: { id: string; element: HTMLElement }) {
+  function scrollToHeading(heading: { id: string; element: HTMLElement }, refocusEditor = false) {
     // lưu index (heading.id là string của số index)
     const headingIndex = parseInt(heading.id);
-
-    // Đóng menu trước
-    isMenuOpen = false;
 
     // Đợi menu fade-out (150ms) + DOM ổn định
     setTimeout(async () => {
@@ -1524,6 +1531,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
       if (!targetEl) {
         console.warn("[TOC] Heading not found at index:", headingIndex);
+        if (refocusEditor) editorInstance?.view?.dom?.focus?.({ preventScroll: true });
         return;
       }
 
@@ -1571,6 +1579,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       // Highlight pulse
       targetEl.classList.add("highlight-pulse");
       setTimeout(() => targetEl.classList.remove("highlight-pulse"), 1500);
+
+      // Re-focus editor sau khi scroll — dùng preventScroll để TipTap không
+      // scroll cursor về cuối văn bản và ghi đè lên vị trí TOC vừa scroll tới
+      if (refocusEditor) {
+        editorInstance?.view?.dom?.focus?.({ preventScroll: true });
+      }
     }, 160);
   }
 
