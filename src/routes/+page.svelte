@@ -114,13 +114,38 @@
 
   let themeShortcutStr = $state("Alt + I");
 
+  // Configurable shortcuts (editable in Settings → Shortcuts). Stored in
+  // localStorage by SettingsPanel; loaded here and refreshed when settings close.
+  // matchShortcut() checks modifiers exactly and handles Cmd↔Ctrl + Mac Option
+  // special chars, so the saved combo strings work cross-platform at runtime.
+  const primaryMod = _isMac ? "Cmd" : "Ctrl";
+  const shortcutDefaults: Record<string, string> = {
+    "new-note": `${primaryMod} + N`,
+    "open-notes": `${primaryMod} + O`,
+    "open-toc": `${primaryMod} + L`,
+    "open-settings": `${primaryMod} + ,`,
+    "collapse": "Alt + F",
+    "pin": "Alt + E",
+    "align-left": "Alt + A",
+    "align-center": "Alt + H",
+    "align-right": "Alt + D",
+  };
+  let appShortcuts = $state<Record<string, string>>({ ...shortcutDefaults });
+
+  function refreshShortcuts() {
+    themeShortcutStr = getLocalShortcut("theme-toggle", "Alt + I");
+    for (const id of Object.keys(shortcutDefaults)) {
+      appShortcuts[id] = getLocalShortcut(id, shortcutDefaults[id]);
+    }
+  }
+
   function closeSettings() {
     isSettingsOpen = false;
     focusAnimationEnabled =
       localStorage.getItem("focusAnimationEnabled") !== "false";
     // Refresh timer preset so TimerWidget picks up the new config
     currentTimerPreset = localStorage.getItem("timerPreset") ?? "60m";
-    themeShortcutStr = getLocalShortcut("theme-toggle", "Alt + I");
+    refreshShortcuts();
   }
 
   async function startDragging(e: PointerEvent) {
@@ -540,50 +565,97 @@
       }
     }
 
-    // 1. Primary modifier (Ctrl on Win/Linux, Cmd on Mac)
+    // ── Configurable shortcuts (editable in Settings → Shortcuts) ──
+    // matchShortcut checks modifiers exactly and handles Cmd↔Ctrl plus Mac
+    // Option special chars (via e.code), so saved combos work cross-platform.
+    if (matchShortcut(e, appShortcuts["new-note"])) {
+      e.preventDefault();
+      createNewNote();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["open-settings"])) {
+      e.preventDefault();
+      handleSettings();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["open-notes"])) {
+      e.preventDefault();
+      isMenuOpen = !isMenuOpen;
+      if (isMenuOpen) {
+        const activeIdx = dropdownNotes.findIndex(n => n.id === activeNoteId);
+        menuFocusedIndex = activeIdx >= 0 ? activeIdx : 0;
+      }
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["open-toc"])) {
+      e.preventDefault();
+      if (!isCollapsed) {
+        isDropdownOpen = !isDropdownOpen;
+        if (isDropdownOpen) {
+          // Blur editor so keyboard events (ArrowUp/Down, Enter) go to TOC only
+          editorInstance?.commands?.blur?.();
+          await tick();
+          tocFocusedIndex = headings.length > 0 ? 0 : -1;
+        } else {
+          // TOC closed without selection → restore editor focus without scrolling
+          await tick();
+          editorInstance?.view?.dom?.focus?.({ preventScroll: true });
+        }
+      }
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["collapse"])) {
+      e.preventDefault();
+      await toggleCollapse();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["pin"])) {
+      e.preventDefault();
+      await togglePin();
+      return;
+    }
+
+    // Editor align shortcuts — handled here (not in Tiptap extension) so matchShortcut's
+    // e.code handling works even when Mac Option produces special chars.
+    if (matchShortcut(e, appShortcuts["align-left"])) {
+      e.preventDefault();
+      if (editorInstance?.isActive('image')) {
+        editorInstance?.chain().focus().updateAttributes('image', { float: 'left' }).run();
+      } else {
+        editorInstance?.chain().focus().setTextAlign('left').run();
+      }
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["align-center"])) {
+      e.preventDefault();
+      if (editorInstance?.isActive('image')) {
+        editorInstance?.chain().focus().updateAttributes('image', { float: 'none' }).run();
+      } else {
+        editorInstance?.chain().focus().setTextAlign('center').run();
+      }
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["align-right"])) {
+      e.preventDefault();
+      if (editorInstance?.isActive('image')) {
+        editorInstance?.chain().focus().updateAttributes('image', { float: 'right' }).run();
+      } else {
+        editorInstance?.chain().focus().setTextAlign('right').run();
+      }
+      return;
+    }
+
+    // ── Fixed (non-editable) primary-modifier shortcuts ──
     const isPrimaryModifier = (_isMac && e.metaKey) || (!_isMac && e.ctrlKey);
 
     if (isPrimaryModifier) {
-      if (e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        createNewNote();
-        return;
-      }
-
-      if (e.key === ",") {
-        e.preventDefault();
-        handleSettings();
-        return;
-      }
-
-      if (e.key.toLowerCase() === "o") {
-        e.preventDefault();
-        isMenuOpen = !isMenuOpen;
-        if (isMenuOpen) {
-          const activeIdx = dropdownNotes.findIndex(n => n.id === activeNoteId);
-          menuFocusedIndex = activeIdx >= 0 ? activeIdx : 0;
-        }
-        return;
-      }
-
-      if (e.key.toLowerCase() === "l") {
-        e.preventDefault();
-        if (!isCollapsed) {
-          isDropdownOpen = !isDropdownOpen;
-          if (isDropdownOpen) {
-            // Blur editor so keyboard events (ArrowUp/Down, Enter) go to TOC only
-            editorInstance?.commands?.blur?.();
-            await tick();
-            tocFocusedIndex = headings.length > 0 ? 0 : -1;
-          } else {
-            // TOC closed without selection → restore editor focus without scrolling
-            await tick();
-            editorInstance?.view?.dom?.focus?.({ preventScroll: true });
-          }
-        }
-        return;
-      }
-
       if (e.key.toLowerCase() === "r" && !e.shiftKey) {
         e.preventDefault();
         editTitle();
@@ -609,56 +681,6 @@
         if (note) {
           archiveNote();
           showToast(`Archived: "${note.title || 'Untitled Note'}"`);
-        }
-        return;
-      }
-
-    }
-
-    // 2. Alt/Option modifier (Alt on Win, Option on Mac — never metaKey to avoid Cmd+F/T/E conflicts)
-    if (e.altKey) {
-      // Always use e.code — Option key on Mac produces special chars (e.g. Option+F → ƒ, Option+A → å)
-      const code = e.code;
-
-      if (code === "KeyF") {
-        e.preventDefault();
-        await toggleCollapse();
-        return;
-      }
-
-      if (code === "KeyE" || code === "KeyT") {
-        e.preventDefault();
-        await togglePin();
-        return;
-      }
-
-      // Editor align shortcuts — handled here (not in Tiptap extension) so e.code works on Mac
-      if (code === "KeyA") {
-        e.preventDefault();
-        if (editorInstance?.isActive('image')) {
-          editorInstance?.chain().focus().updateAttributes('image', { float: 'left' }).run();
-        } else {
-          editorInstance?.chain().focus().setTextAlign('left').run();
-        }
-        return;
-      }
-
-      if (code === "KeyH") {
-        e.preventDefault();
-        if (editorInstance?.isActive('image')) {
-          editorInstance?.chain().focus().updateAttributes('image', { float: 'none' }).run();
-        } else {
-          editorInstance?.chain().focus().setTextAlign('center').run();
-        }
-        return;
-      }
-
-      if (code === "KeyD") {
-        e.preventDefault();
-        if (editorInstance?.isActive('image')) {
-          editorInstance?.chain().focus().updateAttributes('image', { float: 'right' }).run();
-        } else {
-          editorInstance?.chain().focus().setTextAlign('right').run();
         }
         return;
       }
@@ -1299,7 +1321,7 @@
       }
     }
 
-    themeShortcutStr = getLocalShortcut("theme-toggle", "Alt + I");
+    refreshShortcuts();
 
     // Xin quyền gửi thông báo khi khởi động app
     await requestNotificationPermission();

@@ -582,8 +582,14 @@
 
 	/* Emoji Extension */
 	span[data-type="emoji"] {
-		display: inline-block;
+		/* KHÔNG dùng display:inline-block ở đây.
+		   Node emoji là phần tử contenteditable="false" nằm inline. Trên macOS
+		   WebKit (WKWebView), một inline-block contenteditable=false khiến caret
+		   nhảy về đầu dòng và selection vẽ tràn cả dòng. Emoji native chỉ là glyph
+		   text nên inline là đủ; ảnh fallback đã được rule img bên dưới định cỡ. */
+		display: inline;
 		img {
+			display: inline-block;
 			width: 1.2em;
 			height: 1.2em;
 			vertical-align: middle;
