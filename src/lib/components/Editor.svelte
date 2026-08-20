@@ -40,6 +40,8 @@
 	import { CustomImage } from './CustomImage';
 	import { GlobalShortcuts } from './shortcutsExtension';
 	import { ImageCopyExtension } from './ImageCopyExtension';
+	import { FileTreeExtension } from './FileTreeExtension';
+	import { CustomOrderedList } from './CustomOrderedList';
 
 	interface Props {
 		noteId: string;
@@ -99,10 +101,12 @@
 				},
 			},
 			extensions: [
-				// Cấu hình StarterKit: Tắt codeBlock mặc định vì đã dùng lowlight
+				// Cấu hình StarterKit: Tắt codeBlock mặc định vì đã dùng lowlight, tắt orderedList mặc định để dùng CustomOrderedList
 				StarterKit.configure({
 					codeBlock: false,
+					orderedList: false,
 				}),
+				CustomOrderedList,
 				Placeholder.configure({
 					placeholder: ({ node }) => {
 						if (node.type.name === 'detailsSummary') {
@@ -119,6 +123,7 @@
 				CustomCodeBlock.configure({
 					lowlight,
 				}),
+				FileTreeExtension,
 				Table.configure({
 					resizable: true,
 				}),

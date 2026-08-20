@@ -52,25 +52,15 @@
 
 <style lang="scss">
   .updater-overlay {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    top: 50px; /* offset by 50px so it doesn't cover the title bar / header */
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: var(--color-bg, #ffffff);
     z-index: 9999;
     padding: 1rem;
     pointer-events: auto;
-  }
-
-  // macOS WKWebView: no blur — use higher opacity to maintain overlay effect
-  :global([data-os="macos"]) .updater-overlay {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    background: rgba(0, 0, 0, 0.65);
   }
 
   .updater-dialog {

@@ -6,13 +6,15 @@ export const GlobalShortcuts = Extension.create({
 	addKeyboardShortcuts() {
 		return {
 			'Tab': () => {
-				if (this.editor.commands.sinkListItem('listItem')) return true;
-				if (this.editor.commands.sinkListItem('taskItem')) return true;
+				if (this.editor.isActive('listItem') && this.editor.commands.sinkListItem('listItem')) return true;
+				if (this.editor.isActive('taskItem') && this.editor.commands.sinkListItem('taskItem')) return true;
+				if (this.editor.isActive('fileTree')) return false;
 				return true; // prevent default focus shift
 			},
 			'Shift-Tab': () => {
-				if (this.editor.commands.liftListItem('listItem')) return true;
-				if (this.editor.commands.liftListItem('taskItem')) return true;
+				if (this.editor.isActive('listItem') && this.editor.commands.liftListItem('listItem')) return true;
+				if (this.editor.isActive('taskItem') && this.editor.commands.liftListItem('taskItem')) return true;
+				if (this.editor.isActive('fileTree')) return false;
 				return true; // prevent default focus shift
 			},
 			'Backspace': ({ editor }) => {

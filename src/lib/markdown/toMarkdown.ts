@@ -85,7 +85,7 @@ function renderImage(n: AnyNode): string {
 
 const BLOCK_TYPES = new Set([
   'paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'listItem',
-  'taskItem', 'blockquote', 'codeBlock', 'horizontalRule', 'table', 'tableRow',
+  'taskItem', 'blockquote', 'codeBlock', 'fileTree', 'horizontalRule', 'table', 'tableRow',
   'details', 'detailsSummary', 'detailsContent', 'doc',
 ]);
 
@@ -124,6 +124,10 @@ function renderBlock(n: AnyNode, depth: number): string {
       const code = (n.content ?? []).map((c) => c.text ?? '').join('');
       return '```' + lang + '\n' + code + '\n```';
     }
+    case 'fileTree': {
+      const code = (n.content ?? []).map((c) => c.text ?? '').join('');
+      return '```tree\n' + code + '\n```';
+    }
     case 'horizontalRule':
       return '---';
     case 'image':
@@ -141,8 +145,9 @@ function renderBlock(n: AnyNode, depth: number): string {
 
 function renderList(n: AnyNode, depth: number, ordered: boolean): string {
   const items = n.content ?? [];
+  const start = (ordered && typeof n.attrs?.start === 'number') ? n.attrs.start : 1;
   return items
-    .map((item, i) => renderListItem(item, depth, ordered ? `${i + 1}.` : '-'))
+    .map((item, i) => renderListItem(item, depth, ordered ? `${start + i}.` : '-'))
     .join('\n');
 }
 

@@ -43,6 +43,12 @@ export const SlashCommands = Extension.create({
 							command: ({ editor, range }: any) => {
 								editor.chain().focus().deleteRange(range).setDetails().run();
 							},
+						},
+						{
+							title: 'File Tree',
+							command: ({ editor, range }: any) => {
+								editor.chain().focus().deleteRange(range).setNode('fileTree').run();
+							},
 						}
 					]
 						.filter(item => item.title.toLowerCase().startsWith(query.toLowerCase()))

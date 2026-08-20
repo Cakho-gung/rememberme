@@ -205,6 +205,28 @@
 		}
 	}
 
+	/* File Tree Node Styling (Clean Monospace Inline Tree) */
+	.file-tree-wrapper {
+		margin-top: 0.5em;
+		margin-bottom: 0.5em;
+		padding: 4px 0;
+		background: transparent;
+		font-family: $font-family-mono;
+		font-size: 0.92em;
+		line-height: 1.6;
+		white-space: pre;
+		overflow-x: auto;
+		color: var(--color-text, inherit);
+
+		code.file-tree-code {
+			background: none;
+			padding: 0;
+			color: inherit;
+			font-family: inherit;
+			font-size: inherit;
+		}
+	}
+
 	/* Quote Styling */
 	blockquote {
 		border-left: 3px solid var(--dropdown-divider-bg, rgba(0, 0, 0, 0.15));
@@ -364,13 +386,14 @@
 
 	/* Multi-level Ordered Lists */
 	ol {
-		padding-left: 2em;
+		padding-left: 2.2em;
 		margin-top: 0.5em;
 		margin-bottom: 0.5em;
 		list-style-type: none;
-		counter-reset: custom-item;
+		counter-reset: custom-item calc(var(--ol-start, 1) - 1);
 		
 		ol {
+			padding-left: 2.2em;
 			margin-top: 0.25em;
 			margin-bottom: 0.25em;
 		}
