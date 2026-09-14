@@ -38,6 +38,7 @@
     "global-shortcut:allow-unregister-all",
     "core:window:allow-show",
     "core:window:allow-set-focus",
-    "core:window:allow-is-visible"
+    "core:window:allow-is-visible",
+    "core:window:allow-set-shadow"
   ]
 }

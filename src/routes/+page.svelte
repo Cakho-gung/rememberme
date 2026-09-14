@@ -209,6 +209,7 @@
   }
 
   function handleTitleKeyDown(e: KeyboardEvent) {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Escape") {
       isEditingTitle = false;
     } else if (e.key === "Enter") {
@@ -459,6 +460,11 @@
   }
 
   async function handleWindowKeyDown(e: KeyboardEvent) {
+    // If user is currently composing text (IME like Vietnamese/Japanese/Chinese), ignore global hotkeys
+    if (e.isComposing || e.keyCode === 229) {
+      return;
+    }
+
     // Fast path: plain arrow key, no overlay open, no modifier held
     // → skip all overhead and let ProseMirror handle cursor movement directly.
     // This is critical on macOS WKWebView where JS handler overhead compounds key-repeat lag.
@@ -1307,6 +1313,11 @@
     focusAnimationEnabled =
       localStorage.getItem("focusAnimationEnabled") !== "false";
 
+    // Apply window shadow preference
+    const shadowEnabled =
+      localStorage.getItem("windowShadowEnabled") !== "false";
+    getCurrentWindow().setShadow(shadowEnabled).catch(() => {});
+
     // Load UI scale preference from localStorage
     const savedScale = localStorage.getItem("uiScale");
     if (savedScale) {
@@ -1808,6 +1819,9 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
                 onblur={saveTitle}
                 use:focus
                 spellcheck="false"
+                autocorrect="off"
+                autocapitalize="off"
+                autocomplete="off"
               />
             </div>
           {:else}
@@ -2648,7 +2662,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     border-radius: 12px;
     position: relative;
     box-sizing: border-box;
-    border: 1px solid rgba(128, 128, 128, 0.15);
+    border: 1px solid rgba(128, 128, 128, 0.07);
   }
 
   .glass-widget {

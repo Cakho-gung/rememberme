@@ -37,6 +37,7 @@
   }
 
   function handleKeyDown(e: KeyboardEvent) {
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       submitInput();
@@ -105,6 +106,9 @@
     onkeydown={handleKeyDown}
     use:focus
     spellcheck="false"
+    autocorrect="off"
+    autocapitalize="off"
+    autocomplete="off"
   />
 
   {#if suggestions.length > 0}

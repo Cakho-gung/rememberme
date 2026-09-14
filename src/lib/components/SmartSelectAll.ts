@@ -6,6 +6,7 @@ export const SmartSelectAll = Extension.create({
   addKeyboardShortcuts() {
     return {
       'Mod-a': ({ editor }) => {
+        if (editor.view?.composing) return false;
         const { state, dispatch } = editor.view;
         const { selection } = state;
         const { $from, $to } = selection;

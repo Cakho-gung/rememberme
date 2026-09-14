@@ -228,6 +228,7 @@
   }
 
   async function onKeyDownRecorder(e: KeyboardEvent) {
+    if (e.isComposing || e.keyCode === 229) return;
     // ── Mode 1: Recording a shortcut ──
     if (recordingId) {
       e.preventDefault();
@@ -429,6 +430,21 @@
     );
   }
 
+  // ── Window Shadow ──
+  let windowShadowEnabled = $state(
+    localStorage.getItem("windowShadowEnabled") !== "false",
+  );
+
+  async function toggleWindowShadow() {
+    windowShadowEnabled = !windowShadowEnabled;
+    localStorage.setItem("windowShadowEnabled", windowShadowEnabled.toString());
+    try {
+      await getCurrentWindow().setShadow(windowShadowEnabled);
+    } catch (err) {
+      console.warn("[settings] setShadow failed:", err);
+    }
+  }
+
   // ── Toast Duration ──
   let currentToastDuration = $state(
     localStorage.getItem("toastDuration")
@@ -603,6 +619,25 @@
               role="switch"
               aria-checked={focusAnimationEnabled}
               aria-label="Toggle focus animation"
+            >
+              <span class="toggle-thumb"></span>
+            </button>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-info">
+              <span class="setting-label">Window Shadow</span>
+              <span class="setting-desc"
+                >Native drop shadow around the window.</span
+              >
+            </div>
+            <!-- Toggle Switch -->
+            <button
+              class="toggle-switch {windowShadowEnabled ? 'on' : 'off'}"
+              onclick={toggleWindowShadow}
+              role="switch"
+              aria-checked={windowShadowEnabled}
+              aria-label="Toggle window drop shadow"
             >
               <span class="toggle-thumb"></span>
             </button>

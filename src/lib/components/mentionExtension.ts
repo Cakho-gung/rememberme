@@ -15,6 +15,10 @@ const suggestion = {
 				currentProps = props;
 			},
 			onKeyDown: (props: any) => {
+				if (props.event.isComposing || props.event.keyCode === 229) {
+					return false;
+				}
+
 				// Bắt sự kiện phím Space hoặc Enter để chốt Tag
 				if (props.event.key === ' ' || props.event.key === 'Enter') {
 					const query = currentProps.query;

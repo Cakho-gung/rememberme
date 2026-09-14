@@ -92,6 +92,10 @@ export const EmojiExtension = Emoji.configure({
 				},
 
 				onKeyDown(props: any) {
+					if (props.event.isComposing || props.event.keyCode === 229) {
+						return false;
+					}
+
 					if (props.event.key === 'ArrowUp') {
 						props.event.preventDefault();
 						selectedIndex = (selectedIndex + currentItems.length - 1) % currentItems.length;

@@ -93,6 +93,9 @@
 			editorProps: {
 				attributes: {
 					spellcheck: 'false',
+					autocorrect: 'off',
+					autocapitalize: 'off',
+					autocomplete: 'off',
 				},
 				scrollThreshold: { top: 0, bottom: 80, left: 0, right: 0 },
 				scrollMargin: { top: 0, bottom: 80, left: 0, right: 0 },
