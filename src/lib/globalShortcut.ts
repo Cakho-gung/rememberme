@@ -87,6 +87,8 @@ export function matchShortcut(e: KeyboardEvent, shortcutStr: string): boolean {
   
   // Handle special cases
   if (keyStr === ',' && (eKeyLower === ',' || eCodeLower === 'comma')) return true;
-  
+  if ((keyStr === '\\' || keyStr === 'backslash') && (eKeyLower === '\\' || eCodeLower === 'backslash')) return true;
+  if ((keyStr === '/' || keyStr === 'slash') && (eKeyLower === '/' || eCodeLower === 'slash')) return true;
+
   return false;
 }

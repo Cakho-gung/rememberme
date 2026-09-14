@@ -38,6 +38,10 @@ export const GlobalShortcuts = Extension.create({
 				}
 				return false;
 			},
+			'Mod-\\': ({ editor }) => {
+				if (editor.view?.composing) return false;
+				return editor.chain().focus().clearNodes().unsetAllMarks().run();
+			},
 			// Alt+A/H/D align shortcuts are handled in +page.svelte handleWindowKeyDown
 			// using e.code so they work on macOS (Option key produces special chars like å, ˙, ∂)
 		};

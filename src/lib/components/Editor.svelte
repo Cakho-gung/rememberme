@@ -42,6 +42,7 @@
 	import { ImageCopyExtension } from './ImageCopyExtension';
 	import { FileTreeExtension } from './FileTreeExtension';
 	import { CustomOrderedList } from './CustomOrderedList';
+	import { isMac } from '$lib/osUtils';
 
 	interface Props {
 		noteId: string;
@@ -78,6 +79,8 @@
 		superscript: false,
 		textAlign: 'left',
 		headingLevel: 0,
+		bulletList: false,
+		orderedList: false,
 		link: false,
 		textStyle: false,
 		image: false,
@@ -252,6 +255,8 @@
 				else if (editor.isActive({ textAlign: 'justify' })) activeStates.textAlign = 'justify';
 				else activeStates.textAlign = 'left';
 
+				activeStates.bulletList = editor.isActive('bulletList');
+				activeStates.orderedList = editor.isActive('orderedList');
 				activeStates.link = editor.isActive('link');
 				activeStates.textStyle = editor.isActive('textStyle', { color: 'var(--color-accent)' });
 				activeStates.image = editor.isActive('image');
@@ -314,9 +319,13 @@
 		}).then(unlisten => {
 			unlistenDrop = unlisten;
 		});
+
+		window.addEventListener('scroll', removeHeadingTooltip, true);
 	});
 
 	onDestroy(() => {
+		window.removeEventListener('scroll', removeHeadingTooltip, true);
+		removeHeadingTooltip();
 		if (editor) {
 			editor.destroy();
 		}
@@ -469,12 +478,101 @@
 		hoveredLinkElement = null;
 		isMouseOverPopup = false;
 	}
+
+	// ── Heading Hover Tooltip ──
+	let headingTooltipEl: HTMLElement | null = null;
+	let headingTooltipTimer: ReturnType<typeof setTimeout> | null = null;
+	let currentHoveredHeading: HTMLElement | null = null;
+
+	function removeHeadingTooltip() {
+		if (headingTooltipTimer) {
+			clearTimeout(headingTooltipTimer);
+			headingTooltipTimer = null;
+		}
+		if (headingTooltipEl) {
+			const toRemove = headingTooltipEl;
+			headingTooltipEl = null;
+			currentHoveredHeading = null;
+			toRemove.classList.remove('visible');
+			setTimeout(() => toRemove.remove(), 130);
+		}
+	}
+
+	function positionHeadingTooltip(heading: HTMLElement, tooltipEl: HTMLElement) {
+		const rect = heading.getBoundingClientRect();
+		const gap = 6;
+		tooltipEl.style.left = '0px';
+		tooltipEl.style.top = '0px';
+		const tipW = tooltipEl.offsetWidth;
+		const tipH = tooltipEl.offsetHeight;
+
+		let top = rect.top - tipH - gap;
+		let left = rect.left;
+
+		if (top < 10) {
+			top = rect.bottom + gap;
+		}
+		left = Math.max(8, Math.min(window.innerWidth - tipW - 8, left));
+
+		tooltipEl.style.left = `${left}px`;
+		tooltipEl.style.top = `${top}px`;
+	}
+
+	function handleEditorMouseOver(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		const heading = target?.closest?.('h1, h2, h3, h4, h5, h6') as HTMLElement | null;
+
+		if (!heading || !element?.contains(heading)) {
+			if (currentHoveredHeading && !heading) {
+				removeHeadingTooltip();
+			}
+			return;
+		}
+
+		if (currentHoveredHeading === heading) return;
+		removeHeadingTooltip();
+		currentHoveredHeading = heading;
+
+		const tag = heading.tagName.toLowerCase();
+		const level = tag.replace('h', '');
+		const headingText = `Heading ${level}`;
+
+		headingTooltipTimer = setTimeout(() => {
+			if (!currentHoveredHeading || currentHoveredHeading !== heading) return;
+
+			const el = document.createElement('div');
+			el.className = 'app-tooltip';
+			el.textContent = headingText;
+			document.body.appendChild(el);
+			headingTooltipEl = el;
+
+			positionHeadingTooltip(heading, el);
+			void el.offsetWidth;
+			el.classList.add('visible');
+		}, 200);
+	}
+
+	function handleEditorMouseOut(e: MouseEvent) {
+		const related = e.relatedTarget as HTMLElement | null;
+		if (currentHoveredHeading && (!related || !currentHoveredHeading.contains(related))) {
+			removeHeadingTooltip();
+		}
+	}
 </script>
 
 <div class="text-editor-container">
 	<!-- Text Editor Main Area -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="text-editor" bind:this={element} onmousemove={handleEditorMouseMove}></div>
+	<!-- svelte-ignore a11y_mouse_events_have_key_events -->
+	<div 
+		class="text-editor" 
+		bind:this={element} 
+		onmousemove={handleEditorMouseMove}
+		onmouseover={handleEditorMouseOver}
+		onmouseout={handleEditorMouseOut}
+		onmousedown={removeHeadingTooltip}
+		onkeydown={removeHeadingTooltip}
+	></div>
 	
 	{#if showHoverLinkPopup}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -689,6 +787,42 @@
 
 					<div class="bubble-divider"></div>
 
+					<!-- Bullet List -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.bulletList}
+						onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().toggleBulletList().run() }}
+						title="Bullet List"
+					>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="9" x2="21" y1="6" y2="6"/>
+							<line x1="9" x2="21" y1="12" y2="12"/>
+							<line x1="9" x2="21" y1="18" y2="18"/>
+							<circle cx="4" cy="6" r="1.5" fill="currentColor"/>
+							<circle cx="4" cy="12" r="1.5" fill="currentColor"/>
+							<circle cx="4" cy="18" r="1.5" fill="currentColor"/>
+						</svg>
+					</button>
+
+					<!-- Numbered List -->
+					<button 
+						class="bubble-btn" 
+						class:is-active={activeStates.orderedList}
+						onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().toggleOrderedList().run() }}
+						title="Numbered List"
+					>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+							<line x1="10" x2="21" y1="6" y2="6"/>
+							<line x1="10" x2="21" y1="12" y2="12"/>
+							<line x1="10" x2="21" y1="18" y2="18"/>
+							<path d="M4 6h1v4"/>
+							<path d="M4 10h2"/>
+							<path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>
+						</svg>
+					</button>
+
+					<div class="bubble-divider"></div>
+
 					<button 
 						class="bubble-btn" 
 						class:is-active={activeStates.bold}
@@ -754,6 +888,19 @@
 						title="Highlight Accent Color"
 					>
 						<span class="color-dot"></span>
+					</button>
+					<button 
+						class="bubble-btn" 
+						onmousedown={(e) => { e.preventDefault(); editor?.chain().focus().clearNodes().unsetAllMarks().run() }}
+						title="Clear Formatting ({isMac() ? '⌘\\' : 'Ctrl+\\'})"
+					>
+						<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M4 7V4h16v3"/>
+							<path d="M5 20h6"/>
+							<path d="M13 4 8 20"/>
+							<line x1="15" x2="22" y1="15" y2="22"/>
+							<line x1="22" x2="15" y1="15" y2="22"/>
+						</svg>
 					</button>
 
 					<div class="bubble-divider"></div>

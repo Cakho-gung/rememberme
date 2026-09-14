@@ -2,6 +2,19 @@
 
 All notable changes to the **RememberMe** app will be documented in this file.
 
+## [0.2.9] - 2026-09-14
+
+### Added
+- **List & Heading Transformation Tools**:
+  - Added dedicated **Bullet List** (`<ul>`) and **Numbered List** (`<ol>`) buttons directly on the floating Bubble Menu.
+  - Added **Clear Formatting** action (Bubble Menu button + shortcut `Cmd+\` / `Ctrl+\`) to instantly reset selected text to default plain text (clearing headings, lists, codeblocks, bold, italic, underline, strike, colors, links).
+  - Added customizable editor shortcuts in Settings for Bullet List (`Cmd/Ctrl+Shift+8`), Numbered List (`Cmd/Ctrl+Shift+7`), Heading 1/2/3 (`Cmd/Ctrl+Alt+1/2/3`), Plain Text (`Cmd/Ctrl+Alt+0`), and Clear Formatting (`Cmd/Ctrl+\`).
+  - Added `/bullet`, `/numbered`, and `/h3` commands to the slash command menu (`/`).
+- **Heading Hover Tooltip**:
+  - Hovering over any heading in the editor displays a sleek capsule tooltip showing its level (`Heading 1`, `Heading 2`, etc.), automatically dismissing on typing, clicking, or scrolling.
+
+---
+
 ## [0.2.8] - 2026-09-14
 
 ### Added

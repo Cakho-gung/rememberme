@@ -194,6 +194,55 @@
       group: "Editor",
       default: "Alt + D",
     },
+    {
+      id: "bullet-list",
+      label: "Bullet List",
+      description: "Toggle bullet list for selection",
+      group: "Editor",
+      default: `${primary} + Shift + 8`,
+    },
+    {
+      id: "numbered-list",
+      label: "Numbered List",
+      description: "Toggle numbered list for selection",
+      group: "Editor",
+      default: `${primary} + Shift + 7`,
+    },
+    {
+      id: "heading-1",
+      label: "Heading 1",
+      description: "Toggle Heading 1 for selection",
+      group: "Editor",
+      default: `${primary} + Alt + 1`,
+    },
+    {
+      id: "heading-2",
+      label: "Heading 2",
+      description: "Toggle Heading 2 for selection",
+      group: "Editor",
+      default: `${primary} + Alt + 2`,
+    },
+    {
+      id: "heading-3",
+      label: "Heading 3",
+      description: "Toggle Heading 3 for selection",
+      group: "Editor",
+      default: `${primary} + Alt + 3`,
+    },
+    {
+      id: "text-paragraph",
+      label: "Plain Text",
+      description: "Convert selection to plain text",
+      group: "Editor",
+      default: `${primary} + Alt + 0`,
+    },
+    {
+      id: "clear-formatting",
+      label: "Clear Formatting",
+      description: "Clear all styles and reset selection to plain text",
+      group: "Editor",
+      default: `${primary} + \\`,
+    },
   ];
 
   // For the global toggle the saved value already lives under its own key

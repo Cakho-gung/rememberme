@@ -27,6 +27,24 @@ export const SlashCommands = Extension.create({
 							},
 						},
 						{
+							title: 'Heading 3',
+							command: ({ editor, range }: any) => {
+								editor.chain().focus().deleteRange(range).setNode('heading', { level: 3 }).run();
+							},
+						},
+						{
+							title: 'Bullet List',
+							command: ({ editor, range }: any) => {
+								editor.chain().focus().deleteRange(range).toggleBulletList().run();
+							},
+						},
+						{
+							title: 'Numbered List',
+							command: ({ editor, range }: any) => {
+								editor.chain().focus().deleteRange(range).toggleOrderedList().run();
+							},
+						},
+						{
 							title: 'Code Block',
 							command: ({ editor, range }: any) => {
 								editor.chain().focus().deleteRange(range).toggleCodeBlock().run();

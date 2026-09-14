@@ -129,6 +129,13 @@
     "align-left": "Alt + A",
     "align-center": "Alt + H",
     "align-right": "Alt + D",
+    "bullet-list": `${primaryMod} + Shift + 8`,
+    "numbered-list": `${primaryMod} + Shift + 7`,
+    "heading-1": `${primaryMod} + Alt + 1`,
+    "heading-2": `${primaryMod} + Alt + 2`,
+    "heading-3": `${primaryMod} + Alt + 3`,
+    "text-paragraph": `${primaryMod} + Alt + 0`,
+    "clear-formatting": `${primaryMod} + \\`,
   };
   let appShortcuts = $state<Record<string, string>>({ ...shortcutDefaults });
 
@@ -655,6 +662,48 @@
       } else {
         editorInstance?.chain().focus().setTextAlign('right').run();
       }
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["bullet-list"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().toggleBulletList().run();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["numbered-list"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().toggleOrderedList().run();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["heading-1"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().toggleHeading({ level: 1 }).run();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["heading-2"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().toggleHeading({ level: 2 }).run();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["heading-3"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().toggleHeading({ level: 3 }).run();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["text-paragraph"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().setParagraph().run();
+      return;
+    }
+
+    if (matchShortcut(e, appShortcuts["clear-formatting"])) {
+      e.preventDefault();
+      editorInstance?.chain().focus().clearNodes().unsetAllMarks().run();
       return;
     }
 
