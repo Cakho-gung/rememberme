@@ -583,6 +583,13 @@
 			outline: 2px solid $color-accent;
 			outline-offset: 2px;
 		}
+
+		/* Generic node selection (e.g. lists, blockquotes) */
+		&.ProseMirror-selectednode:not(img) {
+			outline: 2px solid $color-accent;
+			background-color: color-mix(in srgb, $color-accent 15%, transparent);
+			border-radius: 4px;
+		}
 	}
 
 

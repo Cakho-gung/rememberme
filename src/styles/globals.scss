@@ -291,13 +291,4 @@ button, a, input, textarea {
   background: rgba(232, 232, 232, 0.97);
 }
 
-// Custom text selection highlight
-::selection {
-  background-color: $color-accent;
-  color: #ffffff;
-}
 
-::-moz-selection {
-  background-color: $color-accent;
-  color: #ffffff;
-}

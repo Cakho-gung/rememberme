@@ -357,8 +357,8 @@
   >([]);
   let hoveredHeadingId: string | null = $state(null);
   let hoveredDotNoteId: string | null = $state(null);
-  let editorInstance: any = $state(null);
-
+  let cachedNoteIds = $state<string[]>([]);
+  let cachedEditorInstances = $state<Record<string, any>>({});
   function cleanupDotDragging(target: HTMLElement, pointerId: number) {
     target.removeEventListener("pointermove", onDotPointerMove);
     target.removeEventListener("pointerup", onDotPointerUp);
@@ -912,6 +912,14 @@
     document.documentElement.style.setProperty("--color-accent-hover", hover);
     document.documentElement.style.setProperty("--color-accent-text", text);
     document.documentElement.style.setProperty("--table-cell-mix", color.cellMix ?? "7%");
+
+    let styleEl = document.getElementById('dynamic-selection-style');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'dynamic-selection-style';
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = `::selection { background-color: ${hex} !important; color: ${text} !important; } ::-moz-selection { background-color: ${hex} !important; color: ${text} !important; }`;
   }
 
   function toggleTheme() {
@@ -1508,6 +1516,7 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
     mockNotes.find((n) => n.id === activeNoteId && !n.archived) ||
       mockNotes.find((n) => !n.archived),
   );
+  let editorInstance = $derived(activeNote ? cachedEditorInstances[activeNote.id] : null);
 
   async function selectNote(id: string) {
     activeNoteId = id;
@@ -1521,12 +1530,12 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
 
   // Selector dùng chung để query headings
   const HEADING_SELECTOR =
-    "#note-scroll-area .ProseMirror h1, " +
-    "#note-scroll-area .ProseMirror h2, " +
-    "#note-scroll-area .ProseMirror h3, " +
-    "#note-scroll-area .ProseMirror h4, " +
-    "#note-scroll-area .ProseMirror h5, " +
-    "#note-scroll-area .ProseMirror h6";
+    "#note-scroll-area .active-editor .ProseMirror h1, " +
+    "#note-scroll-area .active-editor .ProseMirror h2, " +
+    "#note-scroll-area .active-editor .ProseMirror h3, " +
+    "#note-scroll-area .active-editor .ProseMirror h4, " +
+    "#note-scroll-area .active-editor .ProseMirror h5, " +
+    "#note-scroll-area .active-editor .ProseMirror h6";
 
   function updateHeadings() {
     if (isCollapsed) {
@@ -1587,6 +1596,25 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
   $effect(() => {
     if (activeNoteId) {
       localStorage.setItem("lastActiveNoteId", activeNoteId);
+    }
+  });
+
+  $effect(() => {
+    if (!isLoading && activeNote && activeNote.content !== null) {
+      const id = activeNote.id;
+      if (!cachedNoteIds.includes(id)) {
+        let newCache = [...cachedNoteIds, id];
+        if (newCache.length > 5) {
+          const removedId = newCache[0];
+          newCache = newCache.slice(1);
+          delete cachedEditorInstances[removedId];
+        }
+        cachedNoteIds = newCache;
+      } else {
+        if (cachedNoteIds[cachedNoteIds.length - 1] !== id) {
+          cachedNoteIds = [...cachedNoteIds.filter(x => x !== id), id];
+        }
+      }
     }
   });
 
@@ -1993,19 +2021,25 @@ const greet = () => console.log("Hello RememberMe!");</code></pre>
       {#if !isCollapsed}
         <!-- Text editor area -->
         <div class="text-editor" id="note-scroll-area">
-          {#if !isLoading && activeNote && activeNote.content !== null}
-            <Editor
-              noteId={activeNote.id}
-              content={activeNote.content}
-              bind:editor={editorInstance}
-              onUpdate={(content) => {
-                if (activeNote) {
-                  activeNote.content = content;
-                  schedulePersist(activeNote.id);
-                }
-              }}
-            />
-          {/if}
+          {#each cachedNoteIds as cachedId (cachedId)}
+            {@const noteToRender = mockNotes.find(n => n.id === cachedId)}
+            {#if noteToRender && noteToRender.content !== null}
+              <div class="editor-wrapper {cachedId === activeNote?.id ? 'active-editor' : ''}" style="display: {cachedId === activeNote?.id ? 'block' : 'none'}; height: 100%;">
+                <Editor
+                  noteId={cachedId}
+                  content={noteToRender.content}
+                  bind:editor={cachedEditorInstances[cachedId]}
+                  onUpdate={(content) => {
+                    const noteToUpdate = mockNotes.find(n => n.id === cachedId);
+                    if (noteToUpdate) {
+                      noteToUpdate.content = content;
+                      schedulePersist(cachedId);
+                    }
+                  }}
+                />
+              </div>
+            {/if}
+          {/each}
         </div>
 
         <!-- Editor Fade Overlay (Solid color with mask, transitions perfectly with glass-widget) -->
