@@ -1,7 +1,22 @@
 # RememberMe — Changelog
 
-## [0.2.8] - 2026-09-14
+## [0.2.10] - 2026-09-24
 
+### Fixed
+- **Note Switching Rendering Bug**: Fixed an issue causing a blank editor screen when switching or creating notes due to duplicate Tiptap extensions.
+- **Table of Contents Bug**: Fixed an issue where the TOC dropdown incorrectly displayed headings from previously opened (but hidden) notes when viewing a new or empty note.
+
+---
+
+## [0.2.9] - 2026-09-14
+
+### Added
+- **List & Heading Transformation Tools**: Added dedicated Bullet List and Numbered List buttons on the floating Bubble Menu, and Clear Formatting action (`Cmd+\` / `Ctrl+\`).
+- **Heading Hover Tooltip**: Hovering over any heading displays a sleek capsule tooltip showing its level (`Heading 1`, `Heading 2`, etc.).
+
+---
+
+## [0.2.8] - 2026-09-14
 ### Added
 - **Window Drop Shadow Setting**: Added a toggle switch in Settings (`Window Shadow`) allowing users to enable or disable the native operating system window drop shadow dynamically.
 - **Window Permissions**: Configured `core:window:allow-set-shadow` Tauri capability to support runtime shadow switching.

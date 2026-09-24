@@ -2,7 +2,16 @@
 
 All notable changes to the **RememberMe** app will be documented in this file.
 
+## [0.2.10] - 2026-09-24
+
+### Fixed
+- **Note Switching Rendering Bug**: Fixed an issue causing a blank editor screen when switching or creating notes due to duplicate Tiptap extensions.
+- **Table of Contents Bug**: Fixed an issue where the TOC dropdown incorrectly displayed headings from previously opened (but hidden) notes when viewing a new or empty note.
+
+---
+
 ## [0.2.9] - 2026-09-14
+
 
 ### Added
 - **List & Heading Transformation Tools**:
